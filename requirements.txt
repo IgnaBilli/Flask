@@ -3,7 +3,7 @@ gunicorn
 pandas
 numpy
 joblib
-scikit-learn
+scikit-learn==1.6.1
 lightgbm
-xgboost
+xgboost==VERSION_ORIGINAL
 catboost
