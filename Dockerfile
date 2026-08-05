@@ -1,5 +1,5 @@
 # 1. Usar imagen base ligera de Python 3.11/3.13
-FROM python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.11-slim
 
 # 2. Evitar generación de bytecode y forzar stdout sin búfer
 ENV PYTHONUNBUFFERED=1 \
