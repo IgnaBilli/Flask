@@ -5,5 +5,5 @@ numpy
 joblib
 scikit-learn==1.6.1
 lightgbm
-xgboost==VERSION_ORIGINAL
+xgboost
 catboost
