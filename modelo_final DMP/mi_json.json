@@ -1,0 +1,35 @@
+{
+  "latitud": -33.98,
+  "longitud": -60.48,
+  "tipo_uso_suelo": "Agrícola Núcleo",
+  "clase_cobertura_mapbiomas": "Cultivos temporarios",
+
+  "sin_dia_del_anio": 0.2155,
+  "cos_dia_del_anio": -0.9765,
+
+  "nubosidad_pct": 0.0,
+  "ndvi_promedio": 0.3838,
+  "ndvi_min": -0.0759,
+  "ndvi_max": 0.9993,
+  "ndvi_std": 0.1638,
+
+  "temperatura_media_del_dia": 8.68,
+  "temperatura_minima_del_dia": 3.20,
+  "temperatura_maxima_del_dia": 15.34,
+  "precipitacion_del_dia": 0.16,
+  "radiacion_solar_del_dia": 11.16,
+  "humedad_relativa_del_dia": 69.99,
+  "velocidad_del_viento_del_dia": 2.93,
+
+  "precipitacion_acumulada_ultimos_7_dias": 15.07,
+  "radiacion_solar_acumulada_ultimos_7_dias": 57.66,
+  "temperatura_media_promedio_ultimos_7_dias": 8.14,
+  "humedad_relativa_promedio_ultimos_7_dias": 79.88,
+
+  "precipitacion_acumulada_ultimos_30_dias": 33.65,
+  "radiacion_solar_acumulada_ultimos_30_dias": 227.0,
+  "temperatura_media_promedio_ultimos_30_dias": 10.78,
+  "humedad_relativa_promedio_ultimos_30_dias": 82.71,
+
+  "precipitacion_acumulada_ultimos_60_dias": 62.32
+}
