@@ -16,12 +16,27 @@ def normalize_estado(value: object) -> str:
     return normalized or MISSING_CATEGORY
 
 
+REQUIRED_FEATURES = [
+    "peso_vivo_kg",
+    "categoria_terrabovina",
+]
+OPTIONAL_FEATURES = [
+    "condicion_corporal",
+    "estado_fisiologico_norm",
+]
+
+
 def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
-    missing = set(FEATURES) - set(df.columns)
+    missing = set(REQUIRED_FEATURES) - set(df.columns)
     if missing:
         raise ValueError(f"Faltan columnas requeridas: {sorted(missing)}")
 
-    out = df[FEATURES].copy()
+    out = df.copy()
+    for col in OPTIONAL_FEATURES:
+        if col not in out.columns:
+            out[col] = None
+
+    out = out[FEATURES].copy()
     out["peso_vivo_kg"] = pd.to_numeric(out["peso_vivo_kg"], errors="raise")
     out["condicion_corporal"] = pd.to_numeric(out["condicion_corporal"], errors="coerce")
     out["categoria_terrabovina"] = out["categoria_terrabovina"].astype(str).str.strip()
