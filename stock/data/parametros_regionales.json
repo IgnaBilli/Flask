@@ -1,0 +1,384 @@
+{
+  "version": "1.1.0",
+  "fuente_matriz_referencias": {
+    "documento": "PFI-3.8-estabilizacion-regional-dmp.pdf",
+    "seccion": "Matriz de referencias regionales para TerraBovina",
+    "pagina": 8,
+    "criterio": "Se usan literalmente los valores mensuales normalizados a kg MS/ha/dia. Las filas N/D no se interpolan."
+  },
+  "unidad_crecimiento": "kg MS/ha/dia",
+  "parametros": {
+    "dias_calculo_por_defecto": 30,
+    "dias_periodo_dmp": 10,
+    "anio_historico_inicio": 2018,
+    "min_anios_historicos": 3,
+    "factor_dmp_minimo": 0.5,
+    "factor_dmp_maximo": 1.5,
+    "porcentaje_utilizable_pastizal_natural": 0.5,
+    "nubosidad_escena_maxima_pct": 35.0,
+    "pixeles_validos_minimo_fraccion": 0.3,
+    "dias_busqueda_escena_hacia_atras": 24
+  },
+  "stock_inicial_utilizable": {
+    "poco": {
+      "central_kg_ms_ha": 500.0,
+      "min_kg_ms_ha": 250.0,
+      "max_kg_ms_ha": 750.0
+    },
+    "medio": {
+      "central_kg_ms_ha": 1000.0,
+      "min_kg_ms_ha": 750.0,
+      "max_kg_ms_ha": 1250.0
+    },
+    "mucho": {
+      "central_kg_ms_ha": 1500.0,
+      "min_kg_ms_ha": 1250.0,
+      "max_kg_ms_ha": 2000.0
+    }
+  },
+  "zonas": {
+    "corrientes": {
+      "nombre": "Corrientes",
+      "bbox_operativo": [-59.0, -30.8, -55.3, -27.1],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Vegetación natural herbácea y arbustiva",
+      "advertencia_geografica": "La pertenencia se determina mediante un limite operativo aproximado y debe verificarse antes de produccion.",
+      "ambientes": ["pastos_cortos", "malezal", "pajonal", "flechillar"]
+    },
+    "entre_rios_norte": {
+      "nombre": "Norte de Entre Rios",
+      "bbox_operativo": [-60.9, -32.3, -57.7, -29.8],
+      "tipo_uso_suelo_modelo": "Mixta (Agrícola-Ganadera)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Vegetación natural herbácea y arbustiva",
+      "advertencia_geografica": "La pertenencia se determina mediante un limite operativo aproximado; parte de la curva fue reconstruida desde un grafico.",
+      "ambientes": ["pastizal_natural_entre_rios_norte"]
+    },
+    "buenos_aires_ne": {
+      "nombre": "Nordeste de Buenos Aires",
+      "bbox_operativo": [-61.5, -35.4, -57.5, -32.4],
+      "tipo_uso_suelo_modelo": "Mixta (Agrícola-Ganadera)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Herbáceas",
+      "advertencia_geografica": "La pertenencia se determina mediante un limite operativo aproximado y no representa toda la provincia.",
+      "ambientes": ["pastizal_natural_buenos_aires_ne"]
+    },
+    "buenos_aires_centro": {
+      "nombre": "Centro de Buenos Aires",
+      "bbox_operativo": [-61.8, -39.3, -56.4, -35.0],
+      "tipo_uso_suelo_modelo": "Mixta (Agrícola-Ganadera)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Herbáceas",
+      "advertencia_geografica": "La pertenencia se determina mediante un limite operativo aproximado y no representa toda la provincia.",
+      "ambientes": ["pastizal_regular_bueno_buenos_aires_centro", "pastizal_degradado_buenos_aires_centro"]
+    },
+    "pampa_deprimida": {
+      "nombre": "Pampa Deprimida",
+      "bbox_operativo": [-61.3, -38.5, -56.5, -34.5],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Herbáceas",
+      "advertencia_geografica": "La pertenencia se determina mediante un limite operativo aproximado; la matriz distingue loma/media loma, bajo dulce y bajo alcalino, pero el relieve no se infiere solo con el bbox.",
+      "ambientes": ["pampa_deprimida_loma_media_loma", "pampa_deprimida_bajo_dulce", "pampa_deprimida_bajo_alcalino"]
+    },
+    "caldenal_norte": {
+      "nombre": "Caldenal Norte (Victorica-Loventuel)",
+      "bbox_operativo": [-66.2, -37.2, -63.0, -35.0],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Vegetación natural herbácea y arbustiva",
+      "advertencia_geografica": "Limite operativo aproximado para seleccionar las referencias de la matriz; debe reemplazarse por cartografia regional validada antes de produccion.",
+      "ambientes": ["caldenal_norte_sabana", "caldenal_norte_eragrostis"]
+    },
+    "caldenal_centro": {
+      "nombre": "Caldenal Centro (Toay-Anguil)",
+      "bbox_operativo": [-66.2, -38.5, -63.0, -36.5],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Vegetación natural herbácea y arbustiva",
+      "advertencia_geografica": "Limite operativo aproximado para seleccionar las referencias de la matriz; debe reemplazarse por cartografia regional validada antes de produccion.",
+      "ambientes": ["caldenal_centro_sabana", "caldenal_centro_eragrostis"]
+    },
+    "caldenal_sur": {
+      "nombre": "Caldenal Sur (General Acha-Peru)",
+      "bbox_operativo": [-66.5, -39.6, -63.3, -37.4],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Vegetación natural herbácea y arbustiva",
+      "advertencia_geografica": "Limite operativo aproximado para seleccionar las referencias de la matriz; debe reemplazarse por cartografia regional validada antes de produccion.",
+      "ambientes": ["caldenal_sur_sabana", "caldenal_sur_eragrostis"]
+    },
+    "chaco_humedo_oriental": {
+      "nombre": "Chaco Humedo oriental",
+      "bbox_operativo": [-61.8, -28.4, -58.0, -24.8],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Herbaceas Inundables",
+      "advertencia_geografica": "Limite operativo aproximado. La matriz solo respalda paja amarilla y paja boba; las filas Canutillar y Basail permanecen N/D.",
+      "ambientes": ["chaco_humedo_paja_amarilla", "chaco_humedo_paja_boba"]
+    },
+    "santa_fe_norte": {
+      "nombre": "Norte de Santa Fe",
+      "bbox_operativo": [-61.8, -30.7, -58.4, -27.0],
+      "tipo_uso_suelo_modelo": "Ganadera (Pastizal Natural)",
+      "cobertura_modelo_si_mapbiomas_no_disponible": "Herbaceas Inundables",
+      "advertencia_geografica": "Limite operativo aproximado. La eleccion entre valle de inundacion del Parana y Bajos Submeridionales requiere conocer el ambiente local.",
+      "ambientes": ["santa_fe_panicum_prionitis", "santa_fe_spartina_argentinensis"]
+    }
+  },
+  "curvas": {
+    "pastos_cortos": {
+      "id_matriz": "CO-01",
+      "nombre": "Pastos cortos",
+      "zona": "corrientes",
+      "mensual": [27.5, 30.9, 24.1, 16.1, 7.2, 3.9, 5.0, 7.0, 11.0, 20.0, 26.0, 29.3],
+      "total_anual_kg_ms_ha": 6298,
+      "promedio_anual_kg_ms_ha_dia": 17.3,
+      "relacion_verano_invierno": 5.5,
+      "fuente": "Pizzio et al. (2021), INTA, Produccion y utilizacion de los pastizales de Corrientes, Tabla 3, p. 63.",
+      "tipo_fuente": "mediciones_de_campo_publicadas"
+    },
+    "malezal": {
+      "id_matriz": "CO-03",
+      "nombre": "Malezal",
+      "zona": "corrientes",
+      "mensual": [18.1, 24.6, 24.5, 18.3, 13.2, 5.2, 3.8, 5.7, 7.9, 13.0, 17.2, 22.0],
+      "total_anual_kg_ms_ha": 5256,
+      "promedio_anual_kg_ms_ha_dia": 14.4,
+      "relacion_verano_invierno": 4.4,
+      "fuente": "Pizzio et al. (2021), INTA, Produccion y utilizacion de los pastizales de Corrientes, Tabla 3, p. 63.",
+      "tipo_fuente": "mediciones_de_campo_publicadas"
+    },
+    "pajonal": {
+      "id_matriz": "CO-04",
+      "nombre": "Pajonal",
+      "zona": "corrientes",
+      "mensual": [19.8, 21.3, 16.3, 11.8, 6.3, 4.2, 4.3, 6.5, 10.7, 17.1, 20.2, 19.4],
+      "total_anual_kg_ms_ha": 4784,
+      "promedio_anual_kg_ms_ha_dia": 13.1,
+      "relacion_verano_invierno": 4.0,
+      "fuente": "Pizzio et al. (2021), INTA, Produccion y utilizacion de los pastizales de Corrientes, Tabla 3, p. 63.",
+      "tipo_fuente": "mediciones_de_campo_publicadas"
+    },
+    "flechillar": {
+      "id_matriz": "CO-02",
+      "nombre": "Flechillar",
+      "zona": "corrientes",
+      "mensual": [15.1, 17.8, 14.1, 9.8, 4.3, 2.6, 3.5, 5.4, 8.3, 11.7, 13.3, 16.2],
+      "total_anual_kg_ms_ha": 3698,
+      "promedio_anual_kg_ms_ha_dia": 10.1,
+      "relacion_verano_invierno": 4.2,
+      "fuente": "Pizzio et al. (2021), INTA, Produccion y utilizacion de los pastizales de Corrientes, Tabla 3, p. 63.",
+      "tipo_fuente": "mediciones_de_campo_publicadas"
+    },
+    "pastizal_natural_entre_rios_norte": {
+      "id_matriz": "ER-01",
+      "nombre": "Pastizal natural del norte de Entre Rios",
+      "zona": "entre_rios_norte",
+      "mensual": [13.5, 13.8, 11.8, 10.2, 7.3, 5.9, 5.2, 5.7, 8.2, 11.3, 14.7, 14.5],
+      "total_anual_kg_ms_ha": 3705,
+      "promedio_anual_kg_ms_ha_dia": 10.1,
+      "relacion_verano_invierno": 2.5,
+      "fuente": "Serie regional LART compilada en TerraBovina_fuentes_referencia_regional.xlsx.",
+      "tipo_fuente": "satelital_calibrada_y_digitalizacion_grafica",
+      "advertencia": "Los valores de octubre a enero fueron leidos de un grafico y requieren confirmacion antes de produccion."
+    },
+    "pastizal_natural_buenos_aires_ne": {
+      "id_matriz": "BA-03",
+      "nombre": "Pastizal natural del nordeste de Buenos Aires",
+      "zona": "buenos_aires_ne",
+      "mensual": [16.8, 19.8, 17.0, 13.3, 10.1, 8.7, 8.5, 9.7, 12.4, 15.7, 17.5, 15.7],
+      "total_anual_kg_ms_ha": 5010,
+      "promedio_anual_kg_ms_ha_dia": 13.7,
+      "relacion_verano_invierno": 1.9,
+      "fuente": "Serie INTA/LART compilada en TerraBovina_fuentes_referencia_regional.xlsx.",
+      "tipo_fuente": "satelital_calibrada"
+    },
+    "pastizal_regular_bueno_buenos_aires_centro": {
+      "id_matriz": "BA-01",
+      "nombre": "Pastizal regular-bueno del centro de Buenos Aires",
+      "zona": "buenos_aires_centro",
+      "mensual": [13.0, 12.3, 13.8, 11.1, 7.4, 6.6, 6.7, 7.6, 10.0, 15.4, 18.1, 13.8],
+      "total_anual_kg_ms_ha": 4127,
+      "promedio_anual_kg_ms_ha_dia": 11.3,
+      "relacion_verano_invierno": 1.9,
+      "fuente": "Recavarren, INTA Balcarce, Tablas practicas para presupuestacion forrajera, Tabla 1.",
+      "tipo_fuente": "tabla_tecnica_publicada"
+    },
+    "pastizal_degradado_buenos_aires_centro": {
+      "id_matriz": "BA-02",
+      "nombre": "Pastizal degradado del centro de Buenos Aires",
+      "zona": "buenos_aires_centro",
+      "mensual": [8.7, 9.2, 10.3, 8.3, 5.0, 4.4, 4.5, 5.7, 7.5, 12.8, 15.1, 11.0],
+      "total_anual_kg_ms_ha": 3115,
+      "promedio_anual_kg_ms_ha_dia": 8.5,
+      "relacion_verano_invierno": 2.0,
+      "fuente": "Recavarren, INTA Balcarce, Tablas practicas para presupuestacion forrajera, Tabla 1.",
+      "tipo_fuente": "tabla_tecnica_publicada"
+    },
+    "pampa_deprimida_loma_media_loma": {
+      "id_matriz": "BA-04",
+      "nombre": "Pampa Deprimida - loma y media loma",
+      "zona": "pampa_deprimida",
+      "mensual": [17.3, 16.4, 18.4, 14.8, 9.9, 8.8, 8.9, 10.1, 13.3, 20.5, 24.1, 18.4],
+      "total_anual_kg_ms_ha": 5498,
+      "promedio_anual_kg_ms_ha_dia": 15.1,
+      "relacion_verano_invierno": 1.9,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila BA-04.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "pampa_deprimida_bajo_dulce": {
+      "id_matriz": "BA-05",
+      "nombre": "Pampa Deprimida - bajo dulce",
+      "zona": "pampa_deprimida",
+      "mensual": [20.5, 19.4, 21.7, 17.5, 11.7, 10.4, 10.6, 12.0, 15.7, 24.3, 28.5, 21.7],
+      "total_anual_kg_ms_ha": 6504,
+      "promedio_anual_kg_ms_ha_dia": 17.8,
+      "relacion_verano_invierno": 1.9,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila BA-05.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "pampa_deprimida_bajo_alcalino": {
+      "id_matriz": "BA-06",
+      "nombre": "Pampa Deprimida - bajo alcalino",
+      "zona": "pampa_deprimida",
+      "mensual": [7.0, 7.4, 8.3, 6.7, 4.0, 3.5, 3.6, 4.6, 6.0, 10.3, 12.1, 8.8],
+      "total_anual_kg_ms_ha": 2501,
+      "promedio_anual_kg_ms_ha_dia": 6.9,
+      "relacion_verano_invierno": 2.0,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila BA-06.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "caldenal_norte_sabana": {
+      "id_matriz": "LP-01",
+      "nombre": "Caldenal Norte - vegetacion herbacea de sabana",
+      "zona": "caldenal_norte",
+      "mensual": [18.1, 10.3, 8.4, 4.6, 1.8, 0.7, 0.4, 0.5, 1.3, 3.4, 7.7, 10.6],
+      "total_anual_kg_ms_ha": 2057,
+      "promedio_anual_kg_ms_ha_dia": 5.6,
+      "relacion_verano_invierno": 24.6,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila LP-01.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "caldenal_centro_sabana": {
+      "id_matriz": "LP-02",
+      "nombre": "Caldenal Centro - vegetacion herbacea de sabana",
+      "zona": "caldenal_centro",
+      "mensual": [11.1, 7.2, 5.8, 4.6, 2.5, 1.3, 1.2, 1.7, 3.7, 6.2, 8.6, 6.6],
+      "total_anual_kg_ms_ha": 1836,
+      "promedio_anual_kg_ms_ha_dia": 5.0,
+      "relacion_verano_invierno": 6.0,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila LP-02.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "caldenal_sur_sabana": {
+      "id_matriz": "LP-03",
+      "nombre": "Caldenal Sur - vegetacion herbacea de sabana",
+      "zona": "caldenal_sur",
+      "mensual": [12.0, 7.3, 6.8, 4.8, 2.3, 1.4, 1.2, 1.5, 2.6, 4.5, 6.8, 6.8],
+      "total_anual_kg_ms_ha": 1760,
+      "promedio_anual_kg_ms_ha_dia": 4.8,
+      "relacion_verano_invierno": 6.4,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila LP-03.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "caldenal_norte_eragrostis": {
+      "id_matriz": "LP-04",
+      "nombre": "Caldenal Norte - pastura de Eragrostis curvula",
+      "zona": "caldenal_norte",
+      "mensual": [30.0, 17.2, 14.8, 8.1, 3.0, 1.5, 1.2, 1.5, 3.6, 7.5, 13.2, 17.3],
+      "total_anual_kg_ms_ha": 3608,
+      "promedio_anual_kg_ms_ha_dia": 9.9,
+      "relacion_verano_invierno": 15.5,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila LP-04.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "caldenal_centro_eragrostis": {
+      "id_matriz": "LP-05",
+      "nombre": "Caldenal Centro - pastura de Eragrostis curvula",
+      "zona": "caldenal_centro",
+      "mensual": [19.9, 13.8, 12.3, 6.9, 2.6, 1.3, 1.0, 1.4, 4.8, 10.0, 13.2, 10.0],
+      "total_anual_kg_ms_ha": 2946,
+      "promedio_anual_kg_ms_ha_dia": 8.1,
+      "relacion_verano_invierno": 11.8,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila LP-05.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "caldenal_sur_eragrostis": {
+      "id_matriz": "LP-06",
+      "nombre": "Caldenal Sur - pastura de Eragrostis curvula",
+      "zona": "caldenal_sur",
+      "mensual": [13.0, 8.7, 8.0, 5.4, 2.7, 1.7, 1.8, 2.8, 6.1, 12.4, 14.6, 8.3],
+      "total_anual_kg_ms_ha": 2597,
+      "promedio_anual_kg_ms_ha_dia": 7.1,
+      "relacion_verano_invierno": 4.8,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila LP-06.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "chaco_humedo_paja_amarilla": {
+      "id_matriz": "CH-01",
+      "nombre": "Chaco Humedo oriental - pajonal de paja amarilla",
+      "zona": "chaco_humedo_oriental",
+      "mensual": [28.9, 28.9, 28.9, 12.3, 12.3, 12.3, 12.3, 12.3, 12.3, 28.9, 28.9, 28.9],
+      "total_anual_kg_ms_ha": 7511,
+      "promedio_anual_kg_ms_ha_dia": 20.6,
+      "relacion_verano_invierno": 2.3,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila CH-01.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "chaco_humedo_paja_boba": {
+      "id_matriz": "CH-02",
+      "nombre": "Chaco Humedo oriental - pajonal de paja boba",
+      "zona": "chaco_humedo_oriental",
+      "mensual": [29.5, 29.5, 29.5, 12.6, 12.6, 12.6, 12.6, 12.6, 12.6, 29.5, 29.5, 29.5],
+      "total_anual_kg_ms_ha": 7675,
+      "promedio_anual_kg_ms_ha_dia": 21.0,
+      "relacion_verano_invierno": 2.3,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila CH-02.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "santa_fe_panicum_prionitis": {
+      "id_matriz": "SF-02",
+      "nombre": "Norte de Santa Fe - pajonal de Panicum prionitis",
+      "zona": "santa_fe_norte",
+      "mensual": [17.8, 17.8, 17.8, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 17.8, 17.8, 17.8],
+      "total_anual_kg_ms_ha": 4630,
+      "promedio_anual_kg_ms_ha_dia": 12.7,
+      "relacion_verano_invierno": 2.3,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila SF-02.",
+      "tipo_fuente": "matriz_documental_entregada"
+    },
+    "santa_fe_spartina_argentinensis": {
+      "id_matriz": "SF-01",
+      "nombre": "Norte de Santa Fe - espartillar de Spartina argentinensis",
+      "zona": "santa_fe_norte",
+      "mensual": [11.0, 11.0, 11.0, 4.7, 4.7, 4.7, 4.7, 4.7, 4.7, 11.0, 11.0, 11.0],
+      "total_anual_kg_ms_ha": 2862,
+      "promedio_anual_kg_ms_ha_dia": 7.8,
+      "relacion_verano_invierno": 2.3,
+      "fuente": "Matriz de referencias regionales para TerraBovina, PFI 3.8, pagina 8, fila SF-01.",
+      "tipo_fuente": "matriz_documental_entregada"
+    }
+  },
+  "referencias_sin_datos": [
+    {
+      "id_matriz": "CH-03",
+      "subregion": "Sur del Chaco Humedo / La Viruela",
+      "recurso": "Canutillar, pastos cortos, pajachuzal y aibal",
+      "estado": "N/D",
+      "uso": "No se calcula ni interpola"
+    },
+    {
+      "id_matriz": "CH-04",
+      "subregion": "Basail / Chaco Humedo",
+      "recurso": "Bajo inundable, ralera, media loma-bajo y Tangola",
+      "estado": "N/D",
+      "uso": "No se calcula ni interpola"
+    }
+  ],
+  "coberturas_forrajeras_compatibles": [
+    "Pasturas",
+    "Vegetación natural herbácea y arbustiva",
+    "Herbáceas",
+    "Herbaceas Inundables",
+    "Mosaicos de arbustos y herbáceas"
+  ],
+  "notas": [
+    "Las curvas son crecimiento bruto regional y no stock instantaneo.",
+    "El porcentaje utilizable y las categorias de stock inicial son supuestos operativos configurables, no constantes universales de INTA.",
+    "El DMP se usa como anomalia relativa; no se adopta como crecimiento forrajero absoluto."
+    ,"Los valores de referencia corresponden a la matriz de la pagina 8 del PFI 3.8; CH-03 y CH-04 permanecen N/D y no se interpolan."
+  ]
+}

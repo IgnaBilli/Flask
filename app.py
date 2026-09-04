@@ -25,6 +25,7 @@ from feature_engineering import add_agronomic_features
 
 # Import predictor de DMI
 from src.predictor import HerdPredictor
+from stock import StockError, StockInputError, calculate_stock
 
 # Inicializar Flask app
 app = Flask(__name__)
@@ -347,6 +348,38 @@ def predict_dmi():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/predict/stock', methods=['POST'])
+def predict_stock():
+    """Calcula stock utilizable con GIS, referencias regionales y anomalía DMP."""
+    data_in = request.get_json(silent=True)
+    if not isinstance(data_in, dict):
+        return jsonify({"estado": "ERROR", "error": "Body JSON requerido"}), 400
+
+    required = ("fecha", "geojson", "consumo_diario_total_kg_ms")
+    missing = [field for field in required if field not in data_in]
+    if missing:
+        return jsonify({
+            "estado": "ERROR",
+            "error": f"Faltan campos requeridos: {', '.join(missing)}",
+        }), 400
+
+    try:
+        return jsonify(calculate_stock(data_in)), 200
+    except StockInputError as exc:
+        return jsonify({"estado": "ERROR", "error": str(exc)}), 400
+    except StockError as exc:
+        message = str(exc)
+        source_markers = (
+            "No se pudo consultar", "HTTP ", "Open-Meteo", "MapBiomas",
+            "Sentinel-2", "escena", "píxeles NDVI",
+        )
+        status = 502 if any(marker in message for marker in source_markers) else 422
+        return jsonify({"estado": "NO_CALCULABLE", "error": message}), status
+    except Exception as exc:
+        app.logger.exception("Fallo inesperado en /predict/stock")
+        return jsonify({"estado": "ERROR", "error": str(exc)}), 500
 
 
 if __name__ == '__main__':
