@@ -8,9 +8,9 @@ ENV PYTHONUNBUFFERED=1 \
 # 3. Establecer directorio de trabajo
 WORKDIR /app
 
-# 4. Instalar dependencia del sistema requerida por LightGBM
+# 4. Bibliotecas nativas requeridas por LightGBM y los componentes GIS
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends libgomp1 libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 5. Copiar e instalar dependencias de Python
