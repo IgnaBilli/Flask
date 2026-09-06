@@ -27,4 +27,4 @@ EXPOSE 5000
 
 # 8. Iniciar Gunicorn
 # Railway proporciona la variable PORT; localmente utiliza 5000 como valor predeterminado
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --timeout 300 app:app"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-5000} --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-3600} --access-logfile - --error-logfile - app:app"]
