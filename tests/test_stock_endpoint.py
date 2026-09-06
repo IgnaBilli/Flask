@@ -86,7 +86,9 @@ class StockFormulaTest(unittest.TestCase):
             "consumo_diario_total_kg_ms": 350,
             "geojson": POLYGON,
         })
-        self.assertEqual(len(result["dmp"]["periodos"]), 3)
+        self.assertEqual(len(result["dmp"]["periodos"]), 18)
+        self.assertEqual(result["potrero"]["dias_calculo"], 90)
+        self.assertAlmostEqual(result["consumo"]["acumulado_kg_ms_ha"], 350 / 50 * 90)
         self.assertTrue(all(period["factor_dmp_aplicado"] == 1 for period in result["dmp"]["periodos"]))
         gross = result["crecimiento"]["crecimiento_bruto_promedio_kg_ms_ha_dia"]["central"]
         usable = result["crecimiento"]["crecimiento_utilizable_promedio_kg_ms_ha_dia"]["central"]
@@ -95,7 +97,8 @@ class StockFormulaTest(unittest.TestCase):
         production = result["crecimiento"]["produccion_utilizable_acumulada_kg_ms_ha"]["central"]
         consumption = result["consumo"]["acumulado_kg_ms_ha"]
         final = result["stock_final_utilizable"]["valor_kg_ms_ha"]["central"]
-        self.assertAlmostEqual(final, initial + production - consumption, delta=0.02)
+        self.assertAlmostEqual(initial, production, delta=0.02)
+        self.assertAlmostEqual(final, max(0, production - consumption), delta=0.02)
 
 
 if __name__ == "__main__":

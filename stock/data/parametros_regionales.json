@@ -9,7 +9,7 @@
   "unidad_crecimiento": "kg MS/ha/dia",
   "parametros": {
     "dias_calculo_por_defecto": 30,
-    "dias_periodo_dmp": 10,
+    "dias_periodo_dmp": 5,
     "anio_historico_inicio": 2018,
     "min_anios_historicos": 3,
     "factor_dmp_minimo": 0.5,

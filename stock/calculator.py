@@ -639,36 +639,6 @@ def reference_values_for_day(day: date, curve_keys: list[str], params: dict[str,
     return min(values), statistics.median(values), max(values)
 
 
-def estimate_initial_stock(period_results: list[dict[str, Any]], params: dict[str, Any]) -> tuple[dict[str, float], dict[str, Any]]:
-    """Produce un proxy trazable; no lo presenta como modelo de biomasa validado."""
-    baseline = params["stock_inicial_utilizable"]["medio"]
-    near_start_period = period_results[0]
-    factor = float(near_start_period["factor_dmp_aplicado"])
-    values = {
-        "min": float(baseline["min_kg_ms_ha"]) * factor,
-        "central": float(baseline["central_kg_ms_ha"]) * factor,
-        "max": float(baseline["max_kg_ms_ha"]) * factor,
-    }
-    return values, {
-        "estado": "PRELIMINAR_NO_VALIDADO",
-        "metodo": "proxy_operativo_prior_medio_ajustado_por_anomalia_dmp",
-        "descripcion": "Se ajusta el prior operativo medio existente por el factor DMP del primer bloque. Entrega un número para probar el flujo, pero no reemplaza un modelo de biomasa en pie calibrado con aforos.",
-        "prior_base_kg_ms_ha": {
-            "min": float(baseline["min_kg_ms_ha"]),
-            "central": float(baseline["central_kg_ms_ha"]),
-            "max": float(baseline["max_kg_ms_ha"]),
-        },
-        "factor_dmp_aplicado": factor,
-        "periodo_satelital_utilizado": {
-            "fecha_inicio": near_start_period["fecha_inicio"],
-            "fecha_fin": near_start_period["fecha_fin"],
-            "escena_fecha": near_start_period["dmp_actual"]["escena"]["fecha"],
-            "ndvi_promedio": near_start_period["dmp_actual"]["escena"]["ndvi_promedio"],
-        },
-        "confianza": "BAJA",
-        "medicion_real": False,
-        "pendiente_para_validar": "Entrenar y evaluar un modelo específico de biomasa en pie contra aforos georreferenciados y fechados.",
-    }
 
 
 def confidence_historical(year_count: int) -> str:
@@ -693,7 +663,6 @@ def execute_calculation(
     area_ha = float(validated["area_ha"])
     representative = polygon.representative_point()
     lon, lat = representative.x, representative.y
-    start_date = target_date - timedelta(days=validated["days"] - 1)
     warnings: list[str] = []
 
     print("Intersectando el polígono con ecorregiones IGN y unidades de vegetación...")
@@ -721,6 +690,19 @@ def execute_calculation(
             "MapBiomas no estuvo disponible. Para ejecutar el modelo se usó la cobertura natural inferida por el perfil regional; no es una detección observada."
         )
 
+    from stock.seasonal_window import seasonal_window
+    window = seasonal_window(target_date, map_coverage)
+    validated["days"] = window["dias"]
+    if "dias_actualizacion" in data:
+        days_update = data["dias_actualizacion"]
+        if type(days_update) is not int or not 1 <= days_update <= 5:
+            raise StockInputError("dias_actualizacion debe ser un entero entre 1 y 5.")
+        validated["days"] = days_update
+        window["dias"] = days_update
+        window["criterio"] = "actualizacion_incremental"
+    start_date = target_date - timedelta(days=validated["days"] - 1)
+    if not window["cobertura_reconocida"]:
+        warnings.append("Ventana estacional: cobertura sin equivalencia explícita; se aplica el perfil pastizal natural.")
     print("Cargando la copia aislada del modelo DMP...")
     predictor = DmpPredictor(MODEL_PATH)
     segments = create_segments(start_date, target_date, int(params["parametros"]["dias_periodo_dmp"]))
@@ -827,16 +809,25 @@ def execute_calculation(
             "referencias_diarias": daily_references,
         })
 
-    initial, initial_metadata = estimate_initial_stock(period_results, params)
+    # El campo histórico 'stock inicial' ahora representa producción antes del consumo.
+    initial = dict(total_usable)
+    initial_metadata = {
+        "estado": "PRODUCCION_ACUMULADA_ESTIMADA",
+        "metodo": "suma_produccion_utilizable_bloques_5_dias",
+        "descripcion": "Suma del crecimiento utilizable por los días reales de cada bloque; no es biomasa medida al comienzo de la ventana.",
+        "confianza": "BAJA",
+        "medicion_real": False,
+        "biomasa_previa_asumida_kg_ms_ha": 0,
+    }
     warnings.append(
-        "El stock inicial es un proxy operativo automático de confianza baja; aún falta calibrarlo contra aforos de biomasa en pie."
+        "El stock se estima con producción de la ventana menos consumo, sin biomasa previa ni otras pérdidas explícitas; no es un aforo."
     )
     consumption_total_daily = validated["consumption"]
     consumption_per_ha_daily = consumption_total_daily / area_ha
     consumption_total_window = consumption_total_daily * validated["days"]
     consumption_per_ha_window = consumption_per_ha_daily * validated["days"]
     pre_clamp = {
-        key: initial[key] + total_usable[key] - consumption_per_ha_window
+        key: initial[key] - consumption_per_ha_window
         for key in ("min", "central", "max")
     }
     final_stock = {key: max(0.0, value) for key, value in pre_clamp.items()}
@@ -876,7 +867,8 @@ def execute_calculation(
     output = {
         "estado": "OK",
         "generado_en": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "metodologia": "gis_matriz_regional_por_anomalia_dmp_y_balance_30_dias",
+        "metodologia": "gis_dmp_balance_estacional_bloques_5d_sin_prior_v2",
+        "ventana_estacional": window,
         "potrero": {
             "nombre": data.get("nombre_potrero", "Potrero sin nombre"),
             "fecha_objetivo": target_date.isoformat(),
@@ -951,7 +943,7 @@ def execute_calculation(
             "unidad": "kg MS/ha",
             "valor_kg_ms_ha": {key: rounded(value, 2) for key, value in final_stock.items()},
             "total_potrero_kg_ms": {key: rounded(value * area_ha, 2) for key, value in final_stock.items()},
-            "formula": "stock_inicial_utilizable + produccion_utilizable_30d - consumo_30d",
+            "formula": "max(0, produccion_utilizable_ventana - consumo_ventana)",
         },
         "balance_stock": {
             "tipo_stock": "materia_seca_utilizable_estimada",
@@ -968,7 +960,7 @@ def execute_calculation(
                 "acumulado_total_potrero_kg_ms": rounded(consumption_total_window, 2),
                 "acumulado_kg_ms_ha": rounded(consumption_per_ha_window, 2),
             },
-            "formula": "stock_inicial_utilizable + produccion_utilizable - consumo",
+            "formula": "produccion_utilizable_ventana - consumo_ventana; resultado limitado a cero",
             "stock_final_antes_de_limitar_kg_ms_ha": {key: rounded(value, 2) for key, value in pre_clamp.items()},
             "stock_final_utilizable_kg_ms_ha": {key: rounded(value, 2) for key, value in final_stock.items()},
             "stock_final_utilizable_total_potrero_kg_ms": {
