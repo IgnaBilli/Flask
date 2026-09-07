@@ -26,9 +26,26 @@ from feature_engineering import add_agronomic_features
 # Import predictor de DMI
 from src.predictor import HerdPredictor
 from stock import StockError, StockInputError, calculate_stock
+from validation import PredictionInputError, validate_dmi, validate_dmp
 
 # Inicializar Flask app
 app = Flask(__name__)
+
+
+@app.errorhandler(PredictionInputError)
+def invalid_prediction_input(error):
+    return jsonify({"error": str(error)}), 400
+
+
+@app.errorhandler(StockError)
+def unavailable_prediction_source(error):
+    return jsonify({"estado": "NO_CALCULABLE", "error": str(error)}), 502
+
+
+@app.errorhandler(400)
+@app.errorhandler(415)
+def invalid_json(error):
+    return jsonify({"error": "Body JSON válido requerido."}), error.code
 
 # --- INICIALIZACIÓN Y CARGA DE MODELOS ---
 
@@ -73,9 +90,11 @@ def fetch_mapbiomas_class(lat: float, lon: float, year: int) -> str:
             if pixel_val is None and year_map:
                 pixel_val = year_map[max(year_map.keys())]
                 
-            return mapping.get(pixel_val, "Cultivos temporarios")
-    except Exception:
-        return "Cultivos temporarios"
+            if pixel_val not in mapping or pixel_val == 27:
+                raise StockError('MapBiomas no devolvió una cobertura utilizable.')
+            return mapping[pixel_val]
+    except Exception as exc:
+        raise StockError('No se pudo consultar la cobertura de MapBiomas.') from exc
 
 def fetch_open_meteo_weather(lat: float, lon: float, target_date_str: str) -> dict:
     target_dt = datetime.strptime(target_date_str, "%Y-%m-%d")
@@ -93,11 +112,22 @@ def fetch_open_meteo_weather(lat: float, lon: float, target_date_str: str) -> di
     )
     
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as response:
-        data = json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            data = json.loads(response.read().decode('utf-8'))
+    except Exception as exc:
+        raise StockError('No se pudo consultar el clima en Open-Meteo.') from exc
         
-    daily = data['daily']
-    df_w = pd.DataFrame(daily)
+    try:
+        df_w = pd.DataFrame(data['daily'])
+        required = ['temperature_2m_mean', 'temperature_2m_min', 'temperature_2m_max',
+                    'precipitation_sum', 'shortwave_radiation_sum', 'relative_humidity_2m_mean', 'wind_speed_10m_max']
+        if len(df_w) < 60 or df_w['time'].iloc[-1] != target_date_str:
+            raise ValueError('Período climático incompleto.')
+        if not np.isfinite(df_w[required].to_numpy(dtype=float)).all():
+            raise ValueError('Datos climáticos faltantes.')
+    except (KeyError, ValueError, TypeError, IndexError) as exc:
+        raise StockError('Open-Meteo no devolvió todos los datos climáticos requeridos.') from exc
     
     row_today = df_w.iloc[-1]
     
@@ -178,10 +208,7 @@ def fetch_aws_stac_ndvi(coords: list, bbox: list, target_date_str: str) -> dict:
             
         features = stac_res.get('features', [])
         if not features:
-            return {
-                "nubosidad_pct": 0.0, "ndvi_promedio": 0.45, "ndvi_min": 0.10, "ndvi_max": 0.85, "ndvi_std": 0.12,
-                "scene_id": "Sin escena <20%", "scene_date": target_date_str
-            }
+            raise StockError('No hay escenas Sentinel-2 utilizables para la fecha solicitada.')
             
         best_item = sorted(features, key=lambda x: x['properties'].get('datetime', ''), reverse=True)[0]
         cloud_cover = best_item['properties'].get('eo:cloud_cover', 0.0)
@@ -203,10 +230,7 @@ def fetch_aws_stac_ndvi(coords: list, bbox: list, target_date_str: str) -> dict:
             
             mask_valid = (nir + red) > 0
             if not np.any(mask_valid):
-                return {
-                    "nubosidad_pct": float(cloud_cover), "ndvi_promedio": 0.45, "ndvi_min": 0.10, "ndvi_max": 0.85, "ndvi_std": 0.12,
-                    "scene_id": scene_id, "scene_date": scene_date
-                }
+                raise StockError('La escena Sentinel-2 no contiene píxeles NDVI válidos.')
                 
             ndvi = np.where(mask_valid, (nir - red) / (nir + red + 1e-6), np.nan)
             ndvi_vals = ndvi[~np.isnan(ndvi)]
@@ -220,14 +244,17 @@ def fetch_aws_stac_ndvi(coords: list, bbox: list, target_date_str: str) -> dict:
                 "scene_id": scene_id,
                 "scene_date": scene_date
             }
-    except Exception:
-        return {
-            "nubosidad_pct": 8.81, "ndvi_promedio": 0.5459, "ndvi_min": -0.2755, "ndvi_max": 0.8465, "ndvi_std": 0.0924,
-            "scene_id": "S2B_21JWJ_PUBLIC_STAC", "scene_date": target_date_str
-        }
+    except StockError:
+        raise
+    except Exception as exc:
+        raise StockError('No se pudo consultar una escena Sentinel-2 válida.') from exc
 
 
 # --- ENDPOINTS FLASK ---
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok", "models_loaded": {"dmp": model_dmp is not None, "dmi": dmi_predictor is not None}})
 
 @app.route('/predict/dmp', methods=['POST'])
 def predict_dmp():
@@ -237,9 +264,7 @@ def predict_dmp():
     1) Caso directo/offline (si viene 'ndvi_promedio' u otros features en el JSON)
     2) Caso satelital dinámico (si solo viene 'geojson' y 'nombre_potrero')
     """
-    data_in = request.get_json()
-    if not data_in:
-        return jsonify({"error": "Body JSON requerido"}), 400
+    data_in = validate_dmp(request.get_json())
 
     # 1. Si vienen features directas en el body (como en mi_json.json)
     if "ndvi_promedio" in data_in and "latitud" in data_in:
@@ -289,8 +314,18 @@ def predict_dmp():
         dias_periodo = data_in.get('dmp_dias_periodo', 10)
 
     # Inferencia modelo DMP
-    df_single = pd.DataFrame([full_sample])
-    df_feat = add_agronomic_features(df_single)
+    try:
+        df_single = pd.DataFrame([full_sample])
+        df_feat = add_agronomic_features(df_single)
+        numeric_columns = [column for column in feature_columns_dmp if column not in cat_cols_dmp]
+        if not np.isfinite(df_feat[numeric_columns].to_numpy(dtype=float)).all():
+            raise ValueError('Variables no finitas.')
+        if not all(column in df_feat for column in cat_cols_dmp):
+            raise ValueError('Categorías faltantes.')
+    except (KeyError, ValueError, TypeError) as exc:
+        if 'ndvi_promedio' in data_in:
+            raise PredictionInputError('Faltan variables DMP requeridas o contienen valores inválidos.') from exc
+        raise StockError('Las fuentes no proporcionaron todas las variables DMP requeridas.') from exc
     
     # Extraer feature vector como diccionario ordenado antes de codificar categóricas
     feature_vector_dict = {}
@@ -307,6 +342,8 @@ def predict_dmp():
     
     X = df_feat[feature_columns_dmp]
     pred_dia = float(model_dmp.predict(X)[0])
+    if not math.isfinite(pred_dia):
+        raise StockError('El modelo DMP no produjo una predicción finita.')
     pred_dia = max(0.0, round(pred_dia, 2))
     pred_periodo = round(pred_dia * dias_periodo, 2)
     
@@ -332,13 +369,7 @@ def predict_dmi():
     Recibe: { "animales": [ ... ] }
     Devuelve: { "predicciones": [ ... ], "advertencias": [ ... ] }
     """
-    data_in = request.get_json()
-    if not data_in or "animales" not in data_in:
-        return jsonify({"error": "Body JSON debe contener una lista 'animales'"}), 400
-    
-    animales = data_in["animales"]
-    if not isinstance(animales, list) or not animales:
-        return jsonify({"error": "'animales' debe ser una lista no vacía"}), 400
+    animales = validate_dmi(request.get_json(), dmi_predictor.metadata['weight_ranges_kg'])
 
     try:
         predicciones, advertencias = dmi_predictor.predict(animales)
@@ -346,8 +377,9 @@ def predict_dmi():
             "predicciones": predicciones,
             "advertencias": advertencias
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        app.logger.exception('Fallo inesperado en /predict/dmi')
+        return jsonify({"error": "No se pudo ejecutar el modelo DMI."}), 500
 
 
 @app.route('/predict/stock', methods=['POST'])

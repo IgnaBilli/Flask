@@ -167,6 +167,9 @@ def validate_input(data: dict[str, Any], params: dict[str, Any]) -> dict[str, An
     if not isinstance(geojson, dict) or geojson.get("type") != "Polygon":
         raise StockInputError("geojson debe ser un Polygon.")
     try:
+        rings = geojson['coordinates']
+        if not rings or any(len(ring) < 4 or ring[0] != ring[-1] or any(len(point) != 2 for point in ring) for ring in rings):
+            raise ValueError('Los anillos deben ser cerrados y tener coordenadas 2D.')
         polygon = shape(geojson)
     except Exception as exc:
         raise StockInputError(f"GeoJSON inválido: {exc}") from exc
@@ -191,8 +194,8 @@ def validate_input(data: dict[str, Any], params: dict[str, Any]) -> dict[str, An
         consumption = float(data["consumo_diario_total_kg_ms"])
     except (TypeError, ValueError) as exc:
         raise StockInputError("consumo_diario_total_kg_ms debe ser un número.") from exc
-    if consumption < 0:
-        raise StockInputError("consumo_diario_total_kg_ms no puede ser negativo.")
+    if not math.isfinite(consumption) or isinstance(data['consumo_diario_total_kg_ms'], bool) or consumption < 0:
+        raise StockInputError("consumo_diario_total_kg_ms debe ser finito y no negativo.")
 
     return {
         "target_date": target_date,
