@@ -18,6 +18,7 @@ from shapely.ops import transform as transform_shape
 from validation import PredictionInputError, validate_dmp
 
 VERSION = 'sentinel2-intrapotrero-v1'
+PROCESSING_REVISION = 'earthsearch-cog-offset-v2'
 STAC = 'https://earth-search.aws.element84.com/v1/search'
 RESOLUTION = 10
 # Only confidently classified vegetation and bare soil; no water/shadow/cloud interpolation.
@@ -86,6 +87,22 @@ def fetch_scenes(geojson, target):
         raise IntrapaddockSourceError('No se pudo consultar el catálogo Sentinel-2. Reintentá más tarde.') from exc
 
 
+def reflectance(values, asset, scene):
+    """Earth Search legacy COGs can already have the BOA offset subtracted.
+
+    Their raster:bands metadata can still advertise -0.1 (Earth Search #66).
+    Respect the explicit applied flag for COG assets only, never original JP2s.
+    Do not guess calibration from pixel values or clamp negative reflectance.
+    """
+    metadata = asset.get('raster:bands', [{}])[0]
+    scale = float(metadata.get('scale', 0.0001))
+    offset = float(metadata.get('offset', 0))
+    is_cog = 'cloud-optimized' in asset.get('type', '')
+    if is_cog and scene.get('properties', {}).get('earthsearch:boa_offset_applied') is True:
+        offset = 0.0
+    return values * scale + offset
+
+
 def read_scene(scene, crs, affine, grid_shape):
     bands = {}
     with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', GDAL_HTTP_TIMEOUT='20', GDAL_HTTP_MAX_RETRY='1'):
@@ -97,8 +114,7 @@ def read_scene(scene, crs, affine, grid_shape):
                                resampling=Resampling.nearest, nodata=0) as vrt:
                     values = vrt.read(1, masked=True).astype('float32').filled(np.nan)
             if name != 'scl':
-                metadata = asset.get('raster:bands', [{}])[0]
-                values = values * float(metadata.get('scale', 0.0001)) + float(metadata.get('offset', 0))
+                values = reflectance(values, asset, scene)
             bands[name] = values
     return ndvi_from_bands(bands['red'], bands['nir'], bands['scl'])
 
@@ -195,7 +211,8 @@ def calculate_intrapaddock(data):
                 delta = float(np.sum((rasters[current][common] - rasters[previous][common]) * sector_weights[common]) / area)
                 sector['comparisons'][current] = {'previousDate': previous, 'delta': delta, 'commonAreaHa': area / 10000}
     signature = hashlib.sha256(json.dumps(geojson, sort_keys=True).encode()).hexdigest()[:16]
-    return {'id': f'{signature}-{VERSION}', 'illustrative': False, 'version': VERSION,
+    return {'id': f'{signature}-{VERSION}-{PROCESSING_REVISION}', 'illustrative': False, 'version': VERSION,
+            'processingRevision': PROCESSING_REVISION,
             'source': 'Sentinel-2 L2A · Earth Search / Copernicus', 'generatedAt': datetime.now(timezone.utc).isoformat(),
             'requestedDate': target.isoformat(), 'geometry': geojson, 'dates': sorted(observations), 'scenes': observations,
             'sectors': sectors, 'warnings': warnings, 'sectorMethod': 'Cuadrantes geométricos fijos; no son ambientes agronómicos.'}

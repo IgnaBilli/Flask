@@ -4,7 +4,7 @@ import numpy as np
 from rasterio.transform import from_origin
 from shapely.geometry import Polygon, box
 from intrapaddock import (calculate_intrapaddock, pixel_weights, ndvi_from_bands,
-                         summarize_sector, make_grid, IntrapaddockSourceError)
+                         summarize_sector, make_grid, reflectance, read_scene, IntrapaddockSourceError)
 from validation import PredictionInputError
 
 POLYGON = {'type': 'Polygon', 'coordinates': [[[-56.29, -28.43], [-56.284, -28.43],
@@ -12,6 +12,40 @@ POLYGON = {'type': 'Polygon', 'coordinates': [[[-56.29, -28.43], [-56.284, -28.4
 
 
 class IntrapaddockTests(unittest.TestCase):
+    def test_cog_already_corrected_keeps_valid_low_red_reflectance(self):
+        asset = {'type': 'image/tiff; application=geotiff; profile=cloud-optimized',
+                 'raster:bands': [{'scale': 0.0001, 'offset': -0.1}]}
+        scene = {'properties': {'earthsearch:boa_offset_applied': True}}
+        red = reflectance(np.array([[500.0]]), asset, scene)
+        nir = reflectance(np.array([[2500.0]]), asset, scene)
+        np.testing.assert_allclose(red, [[0.05]])
+        np.testing.assert_allclose(ndvi_from_bands(red, nir, np.array([[4]])), [[2 / 3]])
+        # The same scene's original JPEG2000 still needs its published offset.
+        original = {**asset, 'type': 'image/jp2'}
+        np.testing.assert_allclose(reflectance(np.array([[1500.0]]), original, scene), red)
+        for flag in [False, None]:
+            np.testing.assert_allclose(reflectance(np.array([[1500.0]]), asset,
+                {'properties': {'earthsearch:boa_offset_applied': flag}}), red)
+
+    def test_read_scene_applies_calibration_once_and_retains_cloud_mask(self):
+        from rasterio.io import MemoryFile
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            assets = {}
+            for name, values in [('red', [500, 500]), ('nir', [2500, 2500]), ('scl', [4, 9])]:
+                memory = stack.enter_context(MemoryFile())
+                with memory.open(driver='GTiff', height=1, width=2, count=1,
+                                 dtype='uint16', crs='EPSG:32721',
+                                 transform=from_origin(500000, 6900000, 10, 10), nodata=0) as dst:
+                    dst.write(np.array([values], dtype='uint16'), 1)
+                assets[name] = {'href': memory.name,
+                    'type': 'image/tiff; application=geotiff; profile=cloud-optimized',
+                    'raster:bands': [{'scale': 0.0001, 'offset': -0.1}]}
+            result = read_scene({'assets': assets, 'properties': {'earthsearch:boa_offset_applied': True}},
+                'EPSG:32721', from_origin(500000, 6900000, 10, 10), (1, 2))
+            self.assertAlmostEqual(result[0, 0], 2 / 3, places=6)
+            self.assertTrue(np.isnan(result[0, 1]))
+
     def test_fractional_edges_and_holes_preserve_area(self):
         polygon = Polygon([(2, 2), (98, 2), (98, 98), (2, 98)],
                           holes=[[(43, 43), (57, 43), (57, 57), (43, 57)]])
