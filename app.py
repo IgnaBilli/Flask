@@ -27,7 +27,6 @@ from feature_engineering import add_agronomic_features
 from src.predictor import HerdPredictor
 from stock import StockError, StockInputError, calculate_stock
 from validation import PredictionInputError, validate_dmi, validate_dmp
-from intrapaddock import calculate_intrapaddock, IntrapaddockSourceError
 
 # Inicializar Flask app
 app = Flask(__name__)
@@ -381,19 +380,6 @@ def predict_dmi():
     except Exception:
         app.logger.exception('Fallo inesperado en /predict/dmi')
         return jsonify({"error": "No se pudo ejecutar el modelo DMI."}), 500
-
-
-@app.route('/analysis/intrapaddock', methods=['POST'])
-def analyze_intrapaddock():
-    try:
-        return jsonify(calculate_intrapaddock(request.get_json())), 200
-    except PredictionInputError:
-        raise
-    except IntrapaddockSourceError as exc:
-        return jsonify({'error': str(exc)}), 502
-    except Exception:
-        app.logger.exception('Fallo en análisis intrapotrero')
-        return jsonify({'error': 'No se pudo completar el análisis intrapotrero.'}), 500
 
 
 @app.route('/predict/stock', methods=['POST'])
