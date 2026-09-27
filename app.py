@@ -417,8 +417,9 @@ def predict_stock():
 @app.route('/intrapotrero/analizar', methods=['POST'])
 def analyze_intrapaddock():
     from intrapaddock import analyze, ZoneError
+    from intrapaddock_water import fetch_context
     try:
-        return jsonify(analyze(request.get_json(silent=True)))
+        return jsonify(analyze(request.get_json(silent=True), weather_resolver=fetch_context))
     except ZoneError as exc:
         return jsonify({"error": str(exc)}), 422
     except Exception:

@@ -49,7 +49,7 @@ def iso_day(value):
         raise ZoneError("Las fechas deben tener formato YYYY-MM-DD.")
 
 
-def analyze(data, context_resolver=None):
+def analyze(data, context_resolver=None, weather_resolver=None):
     if not isinstance(data, dict):
         raise ZoneError("Se requiere un objeto JSON.")
     field = polygon(data.get("geojson"))
@@ -108,6 +108,16 @@ def analyze(data, context_resolver=None):
             if position not in {"sin_definir", "loma", "media_loma", "bajo", "otro"}:
                 raise ZoneError("Posición del relieve desconocida.")
             item["posicion"] = position
+            observation = z.get("observacion_hidrica")
+            if observation is not None:
+                from intrapaddock_water import OBSERVATIONS
+                if (not isinstance(observation, dict) or not isinstance(observation.get("estado"), str)
+                        or observation["estado"] not in OBSERVATIONS):
+                    raise ZoneError("Estado hídrico observado inválido.")
+                observed = iso_day(observation.get("fecha"))
+                if observed > target:
+                    raise ZoneError("La observación del suelo no puede tener una fecha futura.")
+                item["observacion_hidrica"] = {"estado": observation["estado"], "fecha": observed}
             if any(metric.intersection(other).area > 0.01 for other in habitats):
                 raise ZoneError("Los ambientes no pueden superponerse; pueden compartir bordes.")
             habitats.append(metric)
@@ -178,7 +188,10 @@ def analyze(data, context_resolver=None):
         warnings.append("Sin aguadas registradas: no se puede evaluar cercanía al agua. No implica que no exista agua.")
     if blocked.area > .01:
         warnings.append("Hay sectores inaccesibles: la carga se concentra sobre una superficie menor.")
+    from intrapaddock_water import build_context, unavailable
+    climate = weather_resolver(point.y, point.x, target) if weather_resolver else unavailable()
     return {"version": VERSION, "fecha": target, "region": region, "seleccion_referencia": selection,
+            "agua_relieve": build_context(normalized, climate, target),
             "region_nombre": params["zonas"][region]["nombre"], "catalogo": catalog,
             "configuracion": {"zonas": normalized}, "superficie_total_ha": area / 10000,
             "superficie_pastoreable_ha": accessible.area / 10000,
