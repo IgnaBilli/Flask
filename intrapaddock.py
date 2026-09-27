@@ -13,11 +13,8 @@ from pyproj import Transformer
 from shapely.geometry import Point, shape, mapping
 from shapely.ops import transform, unary_union
 
-VERSION = "ambientes_manuales_v1"
+VERSION = "relieve_sin_curvas_v2"
 PARAMS = Path(__file__).parent / "stock/data/parametros_regionales.json"
-SUPPORTED = {"pampa_deprimida", "buenos_aires_ne", "buenos_aires_centro", "corrientes",
-             "entre_rios_norte", "santa_fe_norte", "chaco_humedo_oriental"}
-
 
 class ZoneError(ValueError):
     pass
@@ -73,11 +70,9 @@ def analyze(data, context_resolver=None):
         raise ZoneError("No hay referencia regional disponible para esta ubicación.") from exc
     selection = context["seleccion_referencia"]
     region = selection["zona_id"]
-    supported = region in SUPPORTED
-    keys = params["zonas"][region]["ambientes"] if supported else []
     baseline_keys = selection["perfiles_utilizados"]
     baseline = [statistics.median(params["curvas"][k]["mensual"][m] for k in baseline_keys) for m in range(12)]
-    catalog = [{"id": k, **params["curvas"][k]} for k in keys]
+    catalog = []  # Regional pasture types are no longer intrapaddock choices.
     point = field.representative_point()
     epsg = (32700 if point.y < 0 else 32600) + max(1, min(60, int((point.x + 180) // 6) + 1))
     forward = Transformer.from_crs(4326, epsg, always_xy=True).transform
@@ -113,15 +108,13 @@ def analyze(data, context_resolver=None):
             if position not in {"sin_definir", "loma", "media_loma", "bajo", "otro"}:
                 raise ZoneError("Posición del relieve desconocida.")
             item["posicion"] = position
-            curve = z.get("ambiente_id")
-            if curve not in keys:
-                raise ZoneError("Elegí un ambiente compatible con la región del potrero.")
             if any(metric.intersection(other).area > 0.01 for other in habitats):
                 raise ZoneError("Los ambientes no pueden superponerse; pueden compartir bordes.")
             habitats.append(metric)
-            item["ambiente_id"] = curve
-            item["curva_mensual"] = params["curvas"][curve]["mensual"]
-            item["referencia"] = params["curvas"][curve]["fuente"]
+            # Ignore retired IDs from stored versions or older clients. Relief
+            # describes the zone; it does not select another growth curve.
+            item["curva_mensual"] = baseline[:]
+            item["referencia"] = "Referencia base del potrero, sin ajuste por relieve."
         if kind == "inaccesible":
             start = iso_day(z.get("desde"))
             end = iso_day(z["hasta"]) if z.get("hasta") else None
@@ -137,17 +130,15 @@ def analyze(data, context_resolver=None):
     accessible = projected.difference(blocked)
     habitat_area = sum(g.area for g in habitats)
     unclassified = projected.difference(unary_union(habitats))
-    weighted = [baseline[m] * unclassified.area / area for m in range(12)]
-    accessible_ref = [baseline[m] * unclassified.difference(blocked).area / area for m in range(12)]
     for z in normalized:
         if z["tipo"] == "ambiente":
             g = geometries[z["id"]]
             z["superficie_accesible_ha"] = g.difference(blocked).area / 10000
             z["aporte_mensual_kg_ms_ha_dia"] = [v * g.area / area for v in z["curva_mensual"]]
-            for m, v in enumerate(z["curva_mensual"]):
-                weighted[m] += v * g.area / area
-                accessible_ref[m] += v * g.difference(blocked).area / area
 
+    # All zones use the same baseline; avoid area-rounding growth multipliers.
+    weighted = baseline[:]
+    accessible_ref = [v * accessible.area / area for v in baseline]
     water = [geometries[z["id"]].difference(blocked) for z in normalized if z["tipo"] == "aguada"]
     shade = [geometries[z["id"]].difference(blocked) for z in normalized if z["tipo"] == "sombra"]
     water = [g for g in water if not g.is_empty]
@@ -178,13 +169,9 @@ def analyze(data, context_resolver=None):
             s["nivel"] = "alta" if score >= 2 / 3 else "baja" if score < 1 / 3 else "media"
             s["indice_relativo"] = round(score, 3)
     warnings = ["Ambientes y recursos declarados por el usuario; no detectados por satélite.",
-                "Las curvas regionales son referencias, no aforos ni calibración individual del potrero."]
+                "El relieve no modifica el crecimiento base del potrero. No se aplican curvas por tipo de pastizal."]
     if selection.get("confianza_geografica") in {"BAJA", "MEDIA"}:
         warnings.append("La selección regional requiere revisión: " + selection.get("justificacion", "Ubicación regional aproximada."))
-    if not supported:
-        warnings.append("Región fuera del alcance Centro/NEA: no se habilita ajuste por ambientes.")
-    if len(keys) == 1:
-        warnings.append("Esta región dispone de una sola curva: registrar loma o bajo no crea diferencias de crecimiento sin una referencia específica validada.")
     if unclassified.area / area > .001:
         warnings.append("La superficie sin clasificar conserva la referencia regional actual.")
     if not water:
@@ -198,7 +185,7 @@ def analyze(data, context_resolver=None):
             "superficie_sin_clasificar_ha": max(0, area - habitat_area) / 10000,
             "referencia_base_mensual": baseline, "referencia_ponderada_mensual": weighted,
             "referencia_accesible_mensual": accessible_ref,
-            "factor_mensual": [weighted[m] / baseline[m] if baseline[m] > 0 else 1 for m in range(12)],
+            "factor_mensual": [1] * 12,
             "preferencia": {"metodo": "cercania_relativa_agua_sombra_v1", "puntos": samples,
                            "advertencia": "Preferencia potencial por cercanía; no mide consumo, presencia animal ni sobrepastoreo. Pesos iguales y tercios son convenciones visuales no calibradas."},
             "advertencias": warnings, "matriz_version": params["version"]}

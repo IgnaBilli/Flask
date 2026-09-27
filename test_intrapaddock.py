@@ -22,18 +22,29 @@ class IntrapaddockTests(unittest.TestCase):
         self.assertEqual(a['factor_mensual'],[1]*12)
         self.assertAlmostEqual(a['superficie_total_ha'],a['superficie_pastoreable_ha'])
 
-    def test_full_environment_replaces_reference_not_twice(self):
-        a=self.run_analysis([self.zone()])
-        for actual, expected in zip(a['referencia_ponderada_mensual'],self.params['curvas'][self.keys[0]]['mensual']):
-            self.assertAlmostEqual(actual,expected)
-        self.assertAlmostEqual(a['superficie_sin_clasificar_ha'],0)
+    def test_relief_and_retired_curves_never_change_growth(self):
+        for position in ['sin_definir', 'loma', 'media_loma', 'bajo']:
+            for retired in [None, 'malezal', 'pajonal', 'flechillar', 'pastos_cortos']:
+                with self.subTest(position=position, retired=retired):
+                    z=self.zone(posicion=position)
+                    z.pop('ambiente_id')
+                    if retired: z['ambiente_id']=retired
+                    a=self.run_analysis([z])
+                    self.assertEqual(a['factor_mensual'],[1]*12)
+                    self.assertEqual(a['referencia_ponderada_mensual'],a['referencia_base_mensual'])
+                    self.assertEqual(a['catalogo'],[])
+                    self.assertNotIn('ambiente_id',a['configuracion']['zonas'][0])
+                    self.assertEqual(a['configuracion']['zonas'][0]['posicion'],position)
+                    self.assertAlmostEqual(a['superficie_sin_clasificar_ha'],0)
 
-    def test_partial_environment_weights_unclassified(self):
-        a=self.run_analysis([self.zone(geom=box(x1=-58.995))])
-        share=a['configuracion']['zonas'][0]['porcentaje']/100
+    def test_partial_relief_and_inaccessible_only_affect_access(self):
+        a=self.run_analysis([self.zone(geom=box(x1=-58.995)),
+            self.zone(id='blocked',kind='inaccesible',geom=box(x1=-58.995),desde='2026-09-27')])
+        self.assertEqual(a['factor_mensual'],[1]*12)
+        share=a['superficie_pastoreable_ha']/a['superficie_total_ha']
+        self.assertAlmostEqual(share,.5,places=3)
         for m in range(12):
-            expected=share*self.params['curvas'][self.keys[0]]['mensual'][m]+(1-share)*a['referencia_base_mensual'][m]
-            self.assertAlmostEqual(a['referencia_ponderada_mensual'][m],expected,places=6)
+            self.assertAlmostEqual(a['referencia_accesible_mensual'][m],share*a['referencia_base_mensual'][m])
 
     def test_rejects_outside_overlap_and_crossed_polygon(self):
         for zones in ([self.zone(geom=box(x1=-58.98))],[self.zone(),self.zone(id='b')]):
