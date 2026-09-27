@@ -414,5 +414,17 @@ def predict_stock():
         return jsonify({"estado": "ERROR", "error": str(exc)}), 500
 
 
+@app.route('/intrapotrero/analizar', methods=['POST'])
+def analyze_intrapaddock():
+    from intrapaddock import analyze, ZoneError
+    try:
+        return jsonify(analyze(request.get_json(silent=True)))
+    except ZoneError as exc:
+        return jsonify({"error": str(exc)}), 422
+    except Exception:
+        app.logger.exception('Fallo en análisis intrapotrero')
+        return jsonify({"error": "No se pudo analizar la geometría del potrero."}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
