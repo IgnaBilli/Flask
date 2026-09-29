@@ -51,6 +51,9 @@ def summarize_daily(payload, end):
     dates = daily.get("time", [])
     rain = daily.get("precipitation_sum", [])
     et0 = daily.get("et0_fao_evapotranspiration", [])
+    temperature = daily.get("temperature_2m_mean", [])
+    temperature_available = (units.get("temperature_2m_mean") == "°C" and len(temperature) == 30
+        and all(type(v) in (int, float) and math.isfinite(v) for v in temperature))
     expected = [(end - timedelta(days=i)).isoformat() for i in range(29, -1, -1)]
     if dates != expected or len(rain) != 30 or len(et0) != 30:
         raise ValueError("Serie incompleta o fechas inesperadas")
@@ -62,6 +65,7 @@ def summarize_daily(payload, end):
         balance = round(p - e, 1)
         periods.append({"dias": days, "desde": expected[-days], "hasta": expected[-1],
                         "precipitacion_mm": round(p, 1), "et0_mm": round(e, 1), "balance_mm": balance,
+                        "temperatura_media_c": round(sum(temperature[-days:]) / days, 1) if temperature_available else None,
                         "senal": "negativo" if balance < 0 else "positivo" if balance > 0 else "equilibrado"})
     return {"disponible": True, "periodos": periods, "fuente": "open_meteo", "fecha_datos": expected[-1],
             "metodo": "Precipitación menos evapotranspiración de referencia (P − ET₀).",
@@ -81,7 +85,7 @@ def fetch_context(lat, lon, target):
     try:
         query = urlencode({"latitude": key[0], "longitude": key[1],
             "start_date": (end - timedelta(days=29)).isoformat(), "end_date": end.isoformat(),
-            "daily": "precipitation_sum,et0_fao_evapotranspiration", "timezone": "America/Argentina/Buenos_Aires"})
+            "daily": "precipitation_sum,et0_fao_evapotranspiration,temperature_2m_mean", "timezone": "America/Argentina/Buenos_Aires"})
         with urlopen(url + "?" + query, timeout=8) as response:
             result = summarize_daily(json.load(response), end)
         result["consultado_en"] = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).isoformat()

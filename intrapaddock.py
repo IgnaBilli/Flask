@@ -67,11 +67,21 @@ def analyze(data, context_resolver=None, weather_resolver=None):
     try:
         context = context_resolver(field, params)
     except (ValueError, KeyError) as exc:
-        raise ZoneError("No hay referencia regional disponible para esta ubicación.") from exc
+        from intrapaddock_climate import coverage
+        covered = coverage(field)
+        if not covered["incluido"]:
+            raise ZoneError("No hay referencia regional disponible para esta ubicación.") from exc
+        # Keep spatial analysis available throughout NEA/BA. Missing growth is
+        # explicitly unknown: never borrow a neighbouring province's curve.
+        context = {"seleccion_referencia": {"zona_id": "sin_referencia_regional",
+            "perfiles_utilizados": [], "estado": "SIN_REFERENCIA",
+            "justificacion": "Sin curva regional disponible; se conserva el crecimiento cargado.",
+            "provincia": ", ".join(covered["provincias"])}}
     selection = context["seleccion_referencia"]
     region = selection["zona_id"]
     baseline_keys = selection["perfiles_utilizados"]
-    baseline = [statistics.median(params["curvas"][k]["mensual"][m] for k in baseline_keys) for m in range(12)]
+    baseline = [statistics.median(params["curvas"][k]["mensual"][m] for k in baseline_keys)
+                if baseline_keys else None for m in range(12)]
     catalog = []  # Regional pasture types are no longer intrapaddock choices.
     point = field.representative_point()
     epsg = (32700 if point.y < 0 else 32600) + max(1, min(60, int((point.x + 180) // 6) + 1))
@@ -148,11 +158,11 @@ def analyze(data, context_resolver=None, weather_resolver=None):
         if z["tipo"] == "ambiente":
             g = geometries[z["id"]]
             z["superficie_accesible_ha"] = g.difference(blocked).area / 10000
-            z["aporte_mensual_kg_ms_ha_dia"] = [v * g.area / area for v in z["curva_mensual"]]
+            z["aporte_mensual_kg_ms_ha_dia"] = [v * g.area / area if v is not None else None for v in z["curva_mensual"]]
 
     # All zones use the same baseline; avoid area-rounding growth multipliers.
     weighted = baseline[:]
-    accessible_ref = [v * accessible.area / area for v in baseline]
+    accessible_ref = [v * accessible.area / area if v is not None else None for v in baseline]
     # Water remains a proximity resource even though its surface is not grazed.
     # Only an active access restriction removes a water resource from the map.
     water = [geometries[z["id"]].difference(restrictions) for z in normalized if z["tipo"] == "aguada"]
@@ -197,10 +207,13 @@ def analyze(data, context_resolver=None, weather_resolver=None):
     if restrictions.area > .01:
         warnings.append("Hay sectores inaccesibles: la carga se concentra sobre una superficie menor.")
     from intrapaddock_water import build_context, unavailable
+    from intrapaddock_climate import build_comparison
     climate = weather_resolver(point.y, point.x, target) if weather_resolver else unavailable()
     return {"version": VERSION, "fecha": target, "region": region, "seleccion_referencia": selection,
             "agua_relieve": build_context(normalized, climate, target),
-            "region_nombre": params["zonas"][region]["nombre"], "catalogo": catalog,
+            "comparacion_climatica": build_comparison(field, climate, target, baseline),
+            "region_nombre": params["zonas"][region]["nombre"] if region in params["zonas"]
+                else selection.get("provincia", "Sin referencia regional"), "catalogo": catalog,
             "configuracion": {"zonas": normalized}, "superficie_total_ha": area / 10000,
             "superficie_pastoreable_ha": accessible.area / 10000,
             "superficie_agua_ha": water_area.area / 10000,
