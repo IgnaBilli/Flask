@@ -1,5 +1,6 @@
 import json
 import unittest
+from shapely.geometry import shape
 from intrapaddock import analyze, polygon, ZoneError, PARAMS
 
 def box(x0=-59, x1=-58.99, y0=-35, y1=-34.99):
@@ -55,14 +56,44 @@ class IntrapaddockTests(unittest.TestCase):
     def test_inaccessible_union_dates_and_blocked_water(self):
         zones=[self.zone(kind='inaccesible',desde='2026-09-26',hasta='2026-09-27'),
                self.zone(id='b',kind='inaccesible',desde='2026-09-26',hasta='2026-09-27'),
-               self.zone(id='w',kind='aguada')]
+               self.zone(id='w',kind='aguada',geom=box(x1=-58.995))]
         active=self.run_analysis(zones)
         self.assertEqual(active['superficie_pastoreable_ha'],0)
         self.assertEqual(active['preferencia']['puntos'],[])
         self.assertEqual(active['factor_mensual'],[1]*12)
         expired=self.run_analysis(zones,'2026-09-28')
-        self.assertAlmostEqual(expired['superficie_pastoreable_ha'],expired['superficie_total_ha'])
+        self.assertAlmostEqual(expired['superficie_pastoreable_ha']/expired['superficie_total_ha'],.5,places=3)
         self.assertTrue(expired['preferencia']['puntos'])
+
+    def test_water_has_no_forage_but_remains_a_proximity_resource(self):
+        water=box(x1=-58.995)
+        a=self.run_analysis([self.zone(),self.zone(id='w',kind='aguada',geom=water)])
+        share=a['superficie_pastoreable_ha']/a['superficie_total_ha']
+        self.assertAlmostEqual(share,.5,places=3)
+        self.assertAlmostEqual(a['configuracion']['zonas'][0]['superficie_accesible_ha'],a['superficie_pastoreable_ha'])
+        self.assertEqual(a['factor_mensual'],[1]*12)
+        self.assertEqual(a['referencia_ponderada_mensual'],a['referencia_base_mensual'])
+        for base, accessible in zip(a['referencia_base_mensual'],a['referencia_accesible_mensual']):
+            self.assertAlmostEqual(accessible,base*share)
+        self.assertTrue(a['preferencia']['puntos'])
+        self.assertTrue(all(p['agua_m'] is not None and not shape(water).covers(shape(p['geom']))
+                            for p in a['preferencia']['puntos']))
+
+    def test_overlapping_water_and_restrictions_are_excluded_once(self):
+        water=box(x1=-58.995)
+        zones=[self.zone(id='w1',kind='aguada',geom=water),
+               self.zone(id='w2',kind='aguada',geom=water),
+               self.zone(id='r',kind='inaccesible',geom=box(x0=-58.9975,x1=-58.9925),desde='2026-09-27')]
+        a=self.run_analysis(zones)
+        self.assertAlmostEqual(a['superficie_pastoreable_ha']/a['superficie_total_ha'],.25,places=3)
+        self.assertAlmostEqual(a['superficie_agua_ha']/a['superficie_total_ha'],.5,places=3)
+
+    def test_entire_field_water_has_zero_accessible_forage(self):
+        a=self.run_analysis([self.zone(kind='aguada')])
+        self.assertEqual(a['superficie_pastoreable_ha'],0)
+        self.assertEqual(a['referencia_accesible_mensual'],[0]*12)
+        self.assertEqual(a['preferencia']['puntos'],[])
+        self.assertFalse(any('Sin aguadas registradas' in w for w in a['advertencias']))
 
     def test_preference_is_inside_and_excludes_inaccessible(self):
         zones=[self.zone(id='w',kind='aguada',geom=box(x1=-58.999,y1=-34.999)),

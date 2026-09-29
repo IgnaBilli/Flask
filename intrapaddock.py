@@ -135,8 +135,12 @@ def analyze(data, context_resolver=None, weather_resolver=None):
         geometries[zid] = metric
         ids.add(zid)
 
-    blocked = unary_union([geometries[z["id"]] for z in normalized if z["tipo"] == "inaccesible"
-                           and z["desde"] <= target and (not z["hasta"] or target <= z["hasta"])])
+    restrictions = unary_union([geometries[z["id"]] for z in normalized if z["tipo"] == "inaccesible"
+                                and z["desde"] <= target and (not z["hasta"] or target <= z["hasta"])])
+    # Aguadas represent water only, with no forage. Union all exclusions so
+    # overlaps between water bodies and dated restrictions count only once.
+    water_area = unary_union([geometries[z["id"]] for z in normalized if z["tipo"] == "aguada"])
+    blocked = unary_union([restrictions, water_area])
     accessible = projected.difference(blocked)
     habitat_area = sum(g.area for g in habitats)
     unclassified = projected.difference(unary_union(habitats))
@@ -149,7 +153,9 @@ def analyze(data, context_resolver=None, weather_resolver=None):
     # All zones use the same baseline; avoid area-rounding growth multipliers.
     weighted = baseline[:]
     accessible_ref = [v * accessible.area / area for v in baseline]
-    water = [geometries[z["id"]].difference(blocked) for z in normalized if z["tipo"] == "aguada"]
+    # Water remains a proximity resource even though its surface is not grazed.
+    # Only an active access restriction removes a water resource from the map.
+    water = [geometries[z["id"]].difference(restrictions) for z in normalized if z["tipo"] == "aguada"]
     shade = [geometries[z["id"]].difference(blocked) for z in normalized if z["tipo"] == "sombra"]
     water = [g for g in water if not g.is_empty]
     shade = [g for g in shade if not g.is_empty]
@@ -186,7 +192,9 @@ def analyze(data, context_resolver=None, weather_resolver=None):
         warnings.append("La superficie sin clasificar conserva la referencia regional actual.")
     if not water:
         warnings.append("Sin aguadas registradas: no se puede evaluar cercanía al agua. No implica que no exista agua.")
-    if blocked.area > .01:
+    if water_area.area > .01:
+        warnings.append("Las aguadas representan agua sin pasto y se excluyen de la superficie pastoreable.")
+    if restrictions.area > .01:
         warnings.append("Hay sectores inaccesibles: la carga se concentra sobre una superficie menor.")
     from intrapaddock_water import build_context, unavailable
     climate = weather_resolver(point.y, point.x, target) if weather_resolver else unavailable()
@@ -195,6 +203,8 @@ def analyze(data, context_resolver=None, weather_resolver=None):
             "region_nombre": params["zonas"][region]["nombre"], "catalogo": catalog,
             "configuracion": {"zonas": normalized}, "superficie_total_ha": area / 10000,
             "superficie_pastoreable_ha": accessible.area / 10000,
+            "superficie_agua_ha": water_area.area / 10000,
+            "accesibilidad_metodo": "sin_aguadas_y_restricciones_v2",
             "superficie_sin_clasificar_ha": max(0, area - habitat_area) / 10000,
             "referencia_base_mensual": baseline, "referencia_ponderada_mensual": weighted,
             "referencia_accesible_mensual": accessible_ref,
