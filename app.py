@@ -30,6 +30,8 @@ from validation import PredictionInputError, validate_dmi, validate_dmp
 
 # Inicializar Flask app
 app = Flask(__name__)
+from rotation import rotation_api
+app.register_blueprint(rotation_api)
 
 
 @app.errorhandler(PredictionInputError)
