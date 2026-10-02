@@ -689,6 +689,9 @@ def execute_calculation(
     zone = params["zonas"][zone_key]
     curve_keys = list(selection["perfiles_utilizados"])
     environment_method = selection["estado"]
+    regional_transfer = environment_method == "RESPALDO_PROXIMIDAD"
+    if regional_transfer:
+        warnings.append(selection["justificacion"])
     area_ha = float(gis_context["superficie_ha"])
     print("Consultando la cobertura actual en MapBiomas...")
     mapbiomas = fetch_mapbiomas(polygon, target_date.year)
@@ -1006,7 +1009,7 @@ def execute_calculation(
             "confianza_ambiental": environmental_confidence,
             "confianza_satelital": satellite_confidence,
             "confianza_historica": historical_confidence,
-            "aplicabilidad_modelo": "MEDIA" if not livestock_assumption and zone_key in {"corrientes", "entre_rios_norte", "buenos_aires_ne", "buenos_aires_centro"} else "BAJA",
+            "aplicabilidad_modelo": "MEDIA" if not livestock_assumption and not regional_transfer and zone_key in {"corrientes", "entre_rios_norte", "buenos_aires_ne", "buenos_aires_centro"} else "BAJA",
             "advertencias": warnings,
         },
         "limitaciones": [
@@ -1031,10 +1034,12 @@ def print_summary(output: dict[str, Any], output_path: Path) -> None:
     print("=" * 68)
     print(f"Potrero:        {output['potrero']['nombre']}")
     print(f"Zona:           {output['ubicacion_y_ambiente']['zona_nombre']}")
-    dominant_eco = output["contexto_gis"]["ecorregiones"][0]
-    dominant_unit = output["contexto_gis"]["unidades_vegetacion"][0]
-    print(f"Ecorregión:     {dominant_eco['nombre']} ({dominant_eco['porcentaje_superficie']:.1f}%)")
-    print(f"Vegetación:     {dominant_unit['codigo']} - {dominant_unit['nombre_vulgar']} ({dominant_unit['porcentaje_superficie']:.1f}%)")
+    ecos = output["contexto_gis"]["ecorregiones"]
+    units = output["contexto_gis"]["unidades_vegetacion"]
+    if ecos:
+        print(f"Ecorregión:     {ecos[0]['nombre']} ({ecos[0]['porcentaje_superficie']:.1f}%)")
+    if units:
+        print(f"Vegetación:     {units[0]['codigo']} - {units[0]['nombre_vulgar']} ({units[0]['porcentaje_superficie']:.1f}%)")
     print(f"Ventana:        {output['potrero']['fecha_inicio']} -> {output['potrero']['fecha_objetivo']}")
     print(f"Superficie:     {output['potrero']['superficie_ha']:.3f} ha")
     print(f"Ambientes:      {', '.join(output['ubicacion_y_ambiente']['ambientes_considerados'])}")

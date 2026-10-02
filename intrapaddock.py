@@ -71,8 +71,8 @@ def analyze(data, context_resolver=None, weather_resolver=None):
         covered = coverage(field)
         if not covered["incluido"]:
             raise ZoneError("No hay referencia regional disponible para esta ubicación.") from exc
-        # Keep spatial analysis available throughout NEA/BA. Missing growth is
-        # explicitly unknown: never borrow a neighbouring province's curve.
+        # Keep spatial analysis available if neither direct nor nearby regional
+        # selection succeeds. In that case growth remains explicitly unknown.
         context = {"seleccion_referencia": {"zona_id": "sin_referencia_regional",
             "perfiles_utilizados": [], "estado": "SIN_REFERENCIA",
             "justificacion": "Sin curva regional disponible; se conserva el crecimiento cargado.",

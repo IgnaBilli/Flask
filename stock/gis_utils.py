@@ -11,6 +11,8 @@ from pyproj import Transformer
 from shapely.geometry import Polygon, shape
 from shapely.ops import transform, unary_union
 
+from .nearby_reference import fallback_scope, nearest_reference
+
 
 BASE_DIR = Path(__file__).resolve().parent
 GIS_DIR = BASE_DIR / "data" / "gis"
@@ -173,7 +175,7 @@ def _map_reference(
     ecoregion: str,
     unit: str,
     params: dict[str, Any],
-) -> tuple[str, list[str], str, str]:
+) -> tuple[str, list[str], str, str] | None:
     eco = _normalize(ecoregion)
     unit = unit.upper()
     point = polygon.representative_point()
@@ -203,28 +205,36 @@ def _map_reference(
     if eco == "delta e islas del parana" and unit == "U4":
         return "santa_fe_norte", ["santa_fe_panicum_prionitis"], "EXACTA", "Delta e Islas del Paraná + U4 selecciona SF-02 Panicum prionitis."
 
-    zone_key, curves = _bbox_fallback(polygon, params)
-    return zone_key, curves, "RESPALDO_BBOX", f"No existe mapeo exacto para {ecoregion} + {unit}; se usó el límite operativo regional solo como respaldo."
+    return None
 
 
 def resolve_gis_context(polygon: Polygon, params: dict[str, Any]) -> dict[str, Any]:
     area_ha, metric_crs = polygon_area_ha(polygon)
     ecoregions = _percentage_intersections(polygon, _load_ign_features(polygon))
     vegetation_units = _percentage_intersections(polygon, _load_oyarzabal_features(polygon))
-    if not ecoregions:
-        raise ValueError("El polígono no intersecta ninguna ecorregión IGN/ANIDA.")
-    if not vegetation_units:
-        raise ValueError("El polígono no intersecta ninguna unidad de vegetación de Oyarzabal.")
-
-    dominant_eco = ecoregions[0]["nombre"]
-    dominant_unit = vegetation_units[0]["codigo"]
-    zone_key, curve_keys, selection_status, justification = _map_reference(
+    dominant_eco = ecoregions[0]["nombre"] if ecoregions else ""
+    dominant_unit = vegetation_units[0]["codigo"] if vegetation_units else ""
+    direct = _map_reference(
         polygon, dominant_eco, dominant_unit, params
     )
+    transferred = None
+    if direct is None:
+        provinces = fallback_scope(polygon)
+        if provinces:
+            transferred = nearest_reference(polygon, _normalize(dominant_eco), dominant_unit, params, provinces)
+            direct = (transferred["zona_id"], transferred["perfiles_utilizados"],
+                      transferred["estado"], transferred["justificacion"])
+        else:
+            if not ecoregions or not vegetation_units:
+                raise ValueError("El polígono no intersecta las capas ambientales y está fuera del respaldo NEA/Buenos Aires.")
+            zone_key, curves = _bbox_fallback(polygon, params)
+            direct = (zone_key, curves, "RESPALDO_BBOX",
+                      f"No existe mapeo exacto para {dominant_eco} + {dominant_unit}; se usó el límite operativo regional solo como respaldo.")
+    zone_key, curve_keys, selection_status, justification = direct
     geographic_confidence = "ALTA"
-    if ecoregions[0]["porcentaje_superficie"] < 90 or vegetation_units[0]["porcentaje_superficie"] < 90:
+    if not ecoregions or not vegetation_units or ecoregions[0]["porcentaje_superficie"] < 90 or vegetation_units[0]["porcentaje_superficie"] < 90:
         geographic_confidence = "MEDIA"
-    if selection_status == "RESPALDO_BBOX":
+    if selection_status in {"RESPALDO_BBOX", "RESPALDO_PROXIMIDAD"}:
         geographic_confidence = "BAJA"
 
     return {
@@ -255,5 +265,6 @@ def resolve_gis_context(polygon: Polygon, params: dict[str, Any]) -> dict[str, A
             "justificacion": justification,
             "confianza_geografica": geographic_confidence,
             "confianza_ambiental": "ALTA" if len(curve_keys) == 1 and selection_status == "EXACTA" else "BAJA",
+            **({"respaldo": transferred["respaldo"]} if transferred else {}),
         },
     }
