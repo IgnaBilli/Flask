@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app import app
-from stock.calculator import calculate_stock
+from stock.calculator import calculate_stock, StockError
 
 
 POLYGON = {
@@ -20,6 +20,35 @@ POLYGON = {
 class StockEndpointTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+
+    @patch('stock.calculator.DmpPredictor')
+    @patch('stock.calculator.fetch_mapbiomas')
+    @patch('stock.calculator.resolve_gis_context')
+    def test_unsupported_coverage_is_422_without_running_or_fabricating_stock(self, gis, coverage, predictor):
+        gis.return_value = {
+            'superficie_ha': 25, 'seleccion_referencia': {
+                'zona_id': 'corrientes', 'perfiles_utilizados': ['pastos_cortos'], 'estado': 'PARCIAL'
+            }
+        }
+        for name in ['Cultivos temporarios', 'Áreas urbanas', 'Cuerpos de agua']:
+            coverage.return_value = {'clase_predominante': name}
+            response = self.client.post('/predict/stock', json={
+                'fecha': '2026-08-05', 'consumo_diario_total_kg_ms': 0, 'geojson': POLYGON
+            })
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.json['codigo'], 'COBERTURA_NO_COMPATIBLE')
+            self.assertEqual(response.json['cobertura'], name)
+            self.assertEqual(response.json['estado'], 'NO_CALCULABLE')
+            self.assertNotIn('stock_final_utilizable', response.json)
+        predictor.assert_not_called()
+
+    @patch('app.calculate_stock', side_effect=StockError('MapBiomas no disponible'))
+    def test_source_failure_remains_502(self, calculate):
+        response = self.client.post('/predict/stock', json={
+            'fecha': '2026-08-05', 'consumo_diario_total_kg_ms': 0, 'geojson': POLYGON
+        })
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn('codigo', response.json)
 
     def test_requires_the_three_contract_fields(self):
         response = self.client.post("/predict/stock", json={})

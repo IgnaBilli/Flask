@@ -25,7 +25,7 @@ from feature_engineering import add_agronomic_features
 
 # Import predictor de DMI
 from src.predictor import HerdPredictor
-from stock import StockError, StockInputError, calculate_stock
+from stock import StockError, StockInputError, StockCoverageError, calculate_stock
 from validation import PredictionInputError, validate_dmi, validate_dmp
 
 # Inicializar Flask app
@@ -403,6 +403,11 @@ def predict_stock():
         return jsonify(calculate_stock(data_in)), 200
     except StockInputError as exc:
         return jsonify({"estado": "ERROR", "error": str(exc)}), 400
+    except StockCoverageError as exc:
+        return jsonify({
+            "estado": "NO_CALCULABLE", "codigo": "COBERTURA_NO_COMPATIBLE",
+            "cobertura": exc.coverage, "error": str(exc),
+        }), 422
     except StockError as exc:
         message = str(exc)
         source_markers = (

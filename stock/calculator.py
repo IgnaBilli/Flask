@@ -99,6 +99,17 @@ class StockInputError(StockError):
     """Entrada inválida que el cliente puede corregir."""
 
 
+class StockCoverageError(StockError):
+    """Cobertura observada fuera del dominio del modelo, no una falla de red."""
+
+    def __init__(self, coverage):
+        self.coverage = coverage
+        super().__init__(
+            f"No se puede estimar el stock: MapBiomas clasifica esta superficie como '{coverage}'. "
+            "El modelo actual de stock no admite esta cobertura."
+        )
+
+
 def normalize_text(value: str) -> str:
     text = unicodedata.normalize("NFKD", str(value).strip().lower())
     return "_".join("".join(c for c in text if not unicodedata.combining(c)).replace("-", " ").split())
@@ -684,9 +695,7 @@ def execute_calculation(
     map_coverage = mapbiomas.get("clase_predominante")
     compatible = set(params["coberturas_forrajeras_compatibles"])
     if map_coverage is not None and map_coverage not in compatible:
-        raise StockError(
-            f"MapBiomas detectó '{map_coverage}', que no es una cobertura forrajera natural compatible con estas curvas."
-        )
+        raise StockCoverageError(map_coverage)
     if map_coverage is None:
         map_coverage = zone["cobertura_modelo_si_mapbiomas_no_disponible"]
         warnings.append(

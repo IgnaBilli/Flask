@@ -1,3 +1,3 @@
-from .calculator import StockError, StockInputError, calculate_stock
+from .calculator import StockError, StockInputError, StockCoverageError, calculate_stock
 
-__all__ = ["StockError", "StockInputError", "calculate_stock"]
+__all__ = ["StockError", "StockInputError", "StockCoverageError", "calculate_stock"]
