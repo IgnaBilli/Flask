@@ -30,7 +30,7 @@ class StockEndpointTest(unittest.TestCase):
                 'zona_id': 'corrientes', 'perfiles_utilizados': ['pastos_cortos'], 'estado': 'PARCIAL'
             }
         }
-        for name in ['Cultivos temporarios', 'Áreas urbanas', 'Cuerpos de agua']:
+        for name in ['Áreas urbanas', 'Cuerpos de agua', 'Silvicultura']:
             coverage.return_value = {'clase_predominante': name}
             response = self.client.post('/predict/stock', json={
                 'fecha': '2026-08-05', 'consumo_diario_total_kg_ms': 0, 'geojson': POLYGON
@@ -128,6 +128,24 @@ class StockFormulaTest(unittest.TestCase):
         final = result["stock_final_utilizable"]["valor_kg_ms_ha"]["central"]
         self.assertAlmostEqual(initial, production, delta=0.02)
         self.assertAlmostEqual(final, max(0, production - consumption), delta=0.02)
+
+        # El uso ganadero asumido permite calcular en coberturas agropecuarias,
+        # preservando la clasificación observada y la baja confianza.
+        for coverage in ['Cultivos temporarios', 'Agricultura', 'Cultivos perennes', 'Mosaico de usos']:
+            fetch_mapbiomas.return_value = {'estado': 'DISPONIBLE', 'clase_predominante': coverage}
+            estimated = calculate_stock({
+                'fecha': '2026-08-05', 'consumo_diario_total_kg_ms': 0,
+                'geojson': POLYGON, 'dias_actualizacion': 5,
+            })
+            self.assertEqual(estimated['estado'], 'OK')
+            self.assertGreater(estimated['stock_final_utilizable']['valor_kg_ms_ha']['central'], 0)
+            self.assertTrue(estimated['supuesto_uso_ganadero']['activo'])
+            self.assertEqual(estimated['supuesto_uso_ganadero']['cobertura_observada'], coverage)
+            self.assertEqual(estimated['ubicacion_y_ambiente']['mapbiomas']['clase_predominante'], coverage)
+            self.assertNotEqual(estimated['ubicacion_y_ambiente']['cobertura_enviada_al_modelo'], coverage)
+            self.assertEqual(estimated['coherencia']['aplicabilidad_modelo'], 'BAJA')
+            self.assertEqual(estimated['coherencia']['confianza_ambiental'], 'BAJA')
+            self.assertEqual(estimated['coherencia']['estado'], 'REVISAR')
 
 
 if __name__ == "__main__":

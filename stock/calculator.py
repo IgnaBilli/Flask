@@ -694,6 +694,23 @@ def execute_calculation(
     mapbiomas = fetch_mapbiomas(polygon, target_date.year)
     map_coverage = mapbiomas.get("clase_predominante")
     compatible = set(params["coberturas_forrajeras_compatibles"])
+    livestock_assumption = None
+    agricultural_coverages = {"Áreas de uso agropecuario", "Agricultura", "Cultivos temporarios", "Cultivos perennes", "Mosaico de usos"}
+    if map_coverage in agricultural_coverages:
+        observed_coverage = map_coverage
+        map_coverage = zone["cobertura_modelo_si_mapbiomas_no_disponible"]
+        livestock_assumption = {
+            "activo": True,
+            "motivo": "uso_ganadero_asumido_por_el_sistema",
+            "cobertura_observada": observed_coverage,
+            "cobertura_referencia": map_coverage,
+            "confianza": "BAJA",
+            "medicion_real": False,
+        }
+        warnings.append(
+            f"MapBiomas indica '{observed_coverage}'. Se asume uso ganadero y se calcula con la referencia regional "
+            f"'{map_coverage}'. Es una estimación orientativa: no confirma la cobertura real ni mide el pasto disponible."
+        )
     if map_coverage is not None and map_coverage not in compatible:
         raise StockCoverageError(map_coverage)
     if map_coverage is None:
@@ -847,7 +864,7 @@ def execute_calculation(
 
     history_counts = [period["dmp_historico"]["cantidad_anios_validos"] for period in period_results]
     historical_confidence = confidence_historical(min(history_counts))
-    environmental_confidence = selection["confianza_ambiental"]
+    environmental_confidence = "BAJA" if livestock_assumption else selection["confianza_ambiental"]
     satellite_quality = min(
         period["dmp_actual"]["escena"]["fraccion_pixeles_validos"] for period in period_results
     )
@@ -880,6 +897,7 @@ def execute_calculation(
         "estado": "OK",
         "generado_en": datetime.now().astimezone().isoformat(timespec="seconds"),
         "metodologia": "gis_dmp_balance_estacional_bloques_5d_sin_prior_v2",
+        "supuesto_uso_ganadero": livestock_assumption,
         "ventana_estacional": window,
         "potrero": {
             "nombre": data.get("nombre_potrero", "Potrero sin nombre"),
@@ -988,7 +1006,7 @@ def execute_calculation(
             "confianza_ambiental": environmental_confidence,
             "confianza_satelital": satellite_confidence,
             "confianza_historica": historical_confidence,
-            "aplicabilidad_modelo": "MEDIA" if zone_key in {"corrientes", "entre_rios_norte", "buenos_aires_ne", "buenos_aires_centro"} else "BAJA",
+            "aplicabilidad_modelo": "MEDIA" if not livestock_assumption and zone_key in {"corrientes", "entre_rios_norte", "buenos_aires_ne", "buenos_aires_centro"} else "BAJA",
             "advertencias": warnings,
         },
         "limitaciones": [
