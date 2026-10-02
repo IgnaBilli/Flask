@@ -41,13 +41,38 @@ priorización constituyen una heurística del sistema, no una técnica validada 
 los autores de las curvas. Una clasificación ambiental semejante tampoco prueba
 que ambos campos tengan igual productividad.
 
-El cambio elimina el bloqueo por ausencia de referencia regional en el ámbito
-indicado, siempre que la matriz y la cartografía estén disponibles. No garantiza
-un valor ante coberturas no admitidas (bosque cerrado, agua, urbano, etc.), errores
-de entrada, falta de escenas válidas o fallas externas. Se conserva el supuesto
-ganadero existente para coberturas agrícolas. No se agregan avisos visuales ni
-inputs a la interfaz. El análisis intrapotrero usa el mismo selector, manteniendo
-separado el módulo experimental climático sin modelo validado.
+## Respaldo del cálculo sin observaciones (v3)
+
+Para polígonos válidos completamente dentro de las cinco provincias, Stock
+también puede calcularse si falta una escena, clima o historia DMP suficiente.
+Cada bloque conserva el ajuste DMP cuando hay observación e historia válidas.
+En los demás se usa la curva mensual regional sin anomalía (multiplicador 1).
+No se inventan NDVI, clima, DMP ni una mediana histórica: permanecen nulos o
+con sus observaciones reales. `factor_dmp_original` es null en el respaldo.
+
+Se priorizan los bloques recientes dentro de un presupuesto remoto de 120 s
+por consulta; una llamada ya iniciada puede terminar después. Al agotarse,
+los bloques restantes utilizan la curva local. Las lecturas GDAL tienen timeout
+de 20 s. El balance se devuelve en orden cronológico y descuenta consumo
+normalmente, con piso cero. No se agregan biomasa inicial ni números arbitrarios.
+
+Cuando MapBiomas indica cobertura incompatible, se conserva esa clasificación
+y se estima el potencial regional bajo el uso ganadero asumido por el producto;
+no se aplica DMP de bosque/agua/urbano como si midiera pasto. Esto NO demuestra
+que haya forraje real allí. Fuera de NEA/BA se conserva el rechazo anterior.
+
+`respaldo_estimacion` registra cantidad de bloques regionales/ajustados y ámbito;
+cada período incluye `metodo_crecimiento` y `motivo_respaldo`. La aplicabilidad
+es BAJA cuando hay respaldo. El backend preserva estas trazas y no informa una
+variación climática observada de 0% cuando solo se aplicó una referencia.
+El supuesto ganadero sigue siendo explícito en la API, sin nuevos formularios
+ni banners. Los campos inválidos, polígonos demasiado pequeños (<=0,01 ha),
+ubicaciones fuera del ámbito y fallas de infraestructura/configuración siguen
+pudiendo fallar. No existe garantía absoluta ante cualquier falla del servicio.
+
+El análisis intrapotrero usa el mismo selector regional, manteniendo separado
+el módulo experimental climático sin modelo validado. Sus otras APIs no se
+sustituyen por este respaldo de Stock.
 
 ## Verificación
 

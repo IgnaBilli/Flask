@@ -21,10 +21,11 @@ class StockEndpointTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
 
+    @patch('stock.calculator.fallback_scope', return_value=None)
     @patch('stock.calculator.DmpPredictor')
     @patch('stock.calculator.fetch_mapbiomas')
     @patch('stock.calculator.resolve_gis_context')
-    def test_unsupported_coverage_is_422_without_running_or_fabricating_stock(self, gis, coverage, predictor):
+    def test_unsupported_coverage_outside_scope_is_422(self, gis, coverage, predictor, scope):
         gis.return_value = {
             'superficie_ha': 25, 'seleccion_referencia': {
                 'zona_id': 'corrientes', 'perfiles_utilizados': ['pastos_cortos'], 'estado': 'PARCIAL'

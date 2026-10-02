@@ -7,6 +7,7 @@ import os
 import statistics
 import sys
 import tempfile
+import time
 import unicodedata
 import urllib.error
 import urllib.request
@@ -48,6 +49,7 @@ except ImportError as exc:
 
 from feature_engineering import add_agronomic_features
 from .gis_utils import polygon_area_ha, resolve_gis_context
+from .nearby_reference import fallback_scope
 import models_utils  # noqa: F401: necesario para deserializar WeightedEnsemble
 
 
@@ -164,6 +166,8 @@ def http_json(
         raise StockError(f"HTTP {exc.code} en {url}: {detail}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise StockError(f"No se pudo consultar {url}: {exc}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise StockError(f"Respuesta inválida de {url}.") from exc
 
 
 def validate_input(data: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
@@ -402,7 +406,7 @@ def scene_ndvi(scene: dict[str, Any], polygon_geojson: dict[str, Any], minimum_v
     for key in ("red", "nir", "scl"):
         if key not in assets or "href" not in assets[key]:
             raise StockError(f"La escena {scene.get('id')} no contiene el asset {key}.")
-    with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
+    with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", GDAL_HTTP_TIMEOUT="20", GDAL_HTTP_CONNECTTIMEOUT="10"):
         with rasterio.open(assets["red"]["href"]) as red_ds:
             geometry = transform_geom("EPSG:4326", red_ds.crs, polygon_geojson)
             red_masked, transform = raster_mask(red_ds, [geometry], crop=True, filled=False)
@@ -472,12 +476,14 @@ def scene_ndvi(scene: dict[str, Any], polygon_geojson: dict[str, Any], minimum_v
 
 
 def find_valid_scene(polygon: Polygon, geojson: dict[str, Any], target_date: date, params: dict[str, Any]) -> dict[str, Any]:
+    check_observation_budget(params)
     scenes = stac_search(polygon, target_date, params)
     if not scenes:
         raise StockError(f"No se encontraron escenas Sentinel-2 para {target_date}.")
     errors: list[str] = []
     minimum_valid = float(params["parametros"]["pixeles_validos_minimo_fraccion"])
     for scene in scenes[:8]:
+        check_observation_budget(params)
         try:
             result = scene_ndvi(scene, geojson, minimum_valid)
             result["fecha_objetivo_busqueda"] = target_date.isoformat()
@@ -626,6 +632,7 @@ def calculate_dmp_observation(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     scene = find_valid_scene(polygon, geojson, target_date, params)
+    check_observation_budget(params)
     weather = fetch_weather(lat, lon, date.fromisoformat(scene["scene_date"]))
     prediction = predictor.predict(lat, lon, scene, weather, soil_use, coverage)
     return {
@@ -646,6 +653,13 @@ def calculate_dmp_observation(
         },
         "clima_fecha": scene["scene_date"],
     }
+
+
+def check_observation_budget(params: dict[str, Any]) -> None:
+    """Bound optional remote enrichment; local regional curves need no network."""
+    deadline = params.get("_observation_deadline")
+    if deadline is not None and time.monotonic() >= deadline:
+        raise StockError("Presupuesto de consulta satelital agotado; se conserva la referencia regional.")
 
 
 def reference_values_for_day(day: date, curve_keys: list[str], params: dict[str, Any]) -> tuple[float, float, float]:
@@ -672,12 +686,19 @@ def execute_calculation(
     params = load_json(PARAMS_PATH)
     data = input_data if isinstance(input_data, dict) else load_json(input_data)
     validated = validate_input(data, params)
+    if "dias_actualizacion" in data and (type(data["dias_actualizacion"]) is not int or not 1 <= data["dias_actualizacion"] <= 5):
+        raise StockInputError("dias_actualizacion debe ser un entero entre 1 y 5.")
     target_date: date = validated["target_date"]
     polygon: Polygon = validated["polygon"]
     area_ha = float(validated["area_ha"])
     representative = polygon.representative_point()
     lon, lat = representative.x, representative.y
     warnings: list[str] = []
+    regional_scope = fallback_scope(polygon)
+    # This is a per-request soft budget. An in-flight bounded request may finish
+    # after it, but no further remote observation is started after the deadline.
+    if regional_scope:
+        params["_observation_deadline"] = time.monotonic() + 120
 
     print("Intersectando el polígono con ecorregiones IGN y unidades de vegetación...")
     try:
@@ -694,13 +715,22 @@ def execute_calculation(
         warnings.append(selection["justificacion"])
     area_ha = float(gis_context["superficie_ha"])
     print("Consultando la cobertura actual en MapBiomas...")
-    mapbiomas = fetch_mapbiomas(polygon, target_date.year)
+    try:
+        mapbiomas = fetch_mapbiomas(polygon, target_date.year)
+    except (StockError, OSError) as exc:
+        if not regional_scope:
+            raise
+        mapbiomas = {"estado": "NO_DISPONIBLE", "clase_predominante": None, "errores": [str(exc)]}
     map_coverage = mapbiomas.get("clase_predominante")
     compatible = set(params["coberturas_forrajeras_compatibles"])
     livestock_assumption = None
+    regional_only_reason = None
     agricultural_coverages = {"Áreas de uso agropecuario", "Agricultura", "Cultivos temporarios", "Cultivos perennes", "Mosaico de usos"}
-    if map_coverage in agricultural_coverages:
+    unsupported = map_coverage is not None and map_coverage not in compatible
+    if map_coverage in agricultural_coverages or (regional_scope and unsupported):
         observed_coverage = map_coverage
+        if unsupported and observed_coverage not in agricultural_coverages:
+            regional_only_reason = f"Cobertura observada '{observed_coverage}': referencia de uso ganadero sin ajuste DMP."
         map_coverage = zone["cobertura_modelo_si_mapbiomas_no_disponible"]
         livestock_assumption = {
             "activo": True,
@@ -736,7 +766,14 @@ def execute_calculation(
     if not window["cobertura_reconocida"]:
         warnings.append("Ventana estacional: cobertura sin equivalencia explícita; se aplica el perfil pastizal natural.")
     print("Cargando la copia aislada del modelo DMP...")
-    predictor = DmpPredictor(MODEL_PATH)
+    predictor = None
+    if not regional_only_reason:
+        try:
+            predictor = DmpPredictor(MODEL_PATH)
+        except (StockError, OSError) as exc:
+            if not regional_scope:
+                raise
+            regional_only_reason = f"Modelo DMP no disponible: {exc}"
     segments = create_segments(start_date, target_date, int(params["parametros"]["dias_periodo_dmp"]))
     historical_start = int(params["parametros"]["anio_historico_inicio"])
     historical_years = list(range(historical_start, target_date.year))
@@ -748,17 +785,28 @@ def execute_calculation(
     utilization = float(params["parametros"]["porcentaje_utilizable_pastizal_natural"])
     clipped_any = False
 
-    for period_index, (period_start, period_end) in enumerate(segments, 1):
+    # Spend the optional observation budget on the most recent growth first.
+    for period_index, (period_start, period_end) in reversed(list(enumerate(segments, 1))):
         print(f"Procesando período {period_index}/{len(segments)}: {period_start} -> {period_end}")
-        current = calculate_dmp_observation(
-            predictor, polygon, validated["geojson"], period_end, lat, lon,
-            zone["tipo_uso_suelo_modelo"], map_coverage, params,
-        )
+        current = None
+        fallback_reason = regional_only_reason
         history: list[dict[str, Any]] = []
         history_errors: list[dict[str, str]] = []
-        for year in historical_years:
+        if not fallback_reason:
+            try:
+                check_observation_budget(params)
+                current = calculate_dmp_observation(
+                    predictor, polygon, validated["geojson"], period_end, lat, lon,
+                    zone["tipo_uso_suelo_modelo"], map_coverage, params,
+                )
+            except (StockError, OSError) as exc:
+                if not regional_scope:
+                    raise
+                fallback_reason = str(exc)
+        for year in historical_years if not fallback_reason else []:
             historical_target = equivalent_date(year, period_end)
             try:
+                check_observation_budget(params)
                 observation = calculate_dmp_observation(
                     predictor, polygon, validated["geojson"], historical_target, lat, lon,
                     zone["tipo_uso_suelo_modelo"], map_coverage, params,
@@ -769,19 +817,19 @@ def execute_calculation(
             except Exception as exc:
                 history_errors.append({"anio": str(year), "error": str(exc)})
                 print(f"  Histórico {year}: no disponible")
-        if len(history) < minimum_years:
-            raise StockError(
-                f"El período {period_start}->{period_end} solo tuvo {len(history)} años históricos válidos; se requieren {minimum_years}."
-            )
-        historical_median = statistics.median(item["dmp_kg_ms_ha_dia"] for item in history)
-        if historical_median <= 0:
-            raise StockError(f"La mediana histórica DMP del período {period_end} no es positiva.")
-        original_factor = current["dmp_kg_ms_ha_dia"] / historical_median
-        applied_factor = min(
+        historical_median = statistics.median(item["dmp_kg_ms_ha_dia"] for item in history) if history else None
+        if not fallback_reason and (len(history) < minimum_years or historical_median <= 0):
+            fallback_reason = f"Histórico DMP insuficiente o no positivo: {len(history)} años válidos; mínimo {minimum_years}."
+            if not regional_scope:
+                raise StockError(fallback_reason)
+        # Neutral multiplier means regional seasonal expectation, NOT an
+        # invented NDVI, measured DMP, or proof of normal current conditions.
+        original_factor = None if fallback_reason else current["dmp_kg_ms_ha_dia"] / historical_median
+        applied_factor = 1.0 if fallback_reason else min(
             float(params["parametros"]["factor_dmp_maximo"]),
             max(float(params["parametros"]["factor_dmp_minimo"]), original_factor),
         )
-        clipped = not math.isclose(original_factor, applied_factor, rel_tol=1e-9)
+        clipped = original_factor is not None and not math.isclose(original_factor, applied_factor, rel_tol=1e-9)
         clipped_any = clipped_any or clipped
         if clipped:
             warnings.append(
@@ -813,6 +861,8 @@ def execute_calculation(
             "fecha_inicio": period_start.isoformat(),
             "fecha_fin": period_end.isoformat(),
             "dias": period_days,
+            "metodo_crecimiento": "REFERENCIA_REGIONAL" if fallback_reason else "REFERENCIA_AJUSTADA_DMP",
+            "motivo_respaldo": fallback_reason,
             "dmp_actual": current,
             "dmp_historico": {
                 "metodo": "mediana_mismo_modelo_misma_epoca",
@@ -841,6 +891,7 @@ def execute_calculation(
             "referencias_diarias": daily_references,
         })
 
+    period_results.sort(key=lambda period: period["periodo"])
     # El campo histórico 'stock inicial' ahora representa producción antes del consumo.
     initial = dict(total_usable)
     initial_metadata = {
@@ -867,13 +918,15 @@ def execute_calculation(
 
     history_counts = [period["dmp_historico"]["cantidad_anios_validos"] for period in period_results]
     historical_confidence = confidence_historical(min(history_counts))
-    environmental_confidence = "BAJA" if livestock_assumption else selection["confianza_ambiental"]
-    satellite_quality = min(
-        period["dmp_actual"]["escena"]["fraccion_pixeles_validos"] for period in period_results
-    )
-    satellite_confidence = "ALTA" if satellite_quality >= 0.8 else "MEDIA" if satellite_quality >= 0.5 else "BAJA"
+    fallback_periods = [p for p in period_results if p["motivo_respaldo"]]
+    environmental_confidence = "BAJA" if livestock_assumption or fallback_periods else selection["confianza_ambiental"]
+    satellite_values = [p["dmp_actual"]["escena"]["fraccion_pixeles_validos"] for p in period_results if p["dmp_actual"]]
+    satellite_quality = min(satellite_values) if satellite_values else 0
+    satellite_confidence = "NO_DISPONIBLE" if not satellite_values else "BAJA" if fallback_periods else "ALTA" if satellite_quality >= 0.8 else "MEDIA" if satellite_quality >= 0.5 else "BAJA"
+    if fallback_periods:
+        warnings.append(f"{len(fallback_periods)} períodos usan la curva regional sin ajuste DMP; no hay observación suficiente para inferir la anomalía actual.")
     status = "COHERENTE"
-    if predictor.load_warnings:
+    if predictor and predictor.load_warnings:
         warnings.append(
             "La carga del artefacto emitió una advertencia de compatibilidad de XGBoost; las predicciones se generaron, pero conviene reexportar el modelo con un formato estable."
         )
@@ -899,7 +952,14 @@ def execute_calculation(
     output = {
         "estado": "OK",
         "generado_en": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "metodologia": "gis_dmp_balance_estacional_bloques_5d_sin_prior_v2",
+        "metodologia": "gis_dmp_balance_estacional_respaldo_regional_v3",
+        "respaldo_estimacion": {
+            "activo": bool(fallback_periods), "version": "nea_ba_regional_sin_observacion_v1",
+            "provincias": regional_scope or [], "periodos_regionales": len(fallback_periods),
+            "periodos_ajustados_dmp": len(period_results) - len(fallback_periods),
+            "medicion_real": False, "validacion_local": False,
+            "criterio": "curva_regional_estacional_sin_anomalia_cuando_falta_observacion",
+        },
         "supuesto_uso_ganadero": livestock_assumption,
         "ventana_estacional": window,
         "potrero": {
@@ -928,16 +988,16 @@ def execute_calculation(
         "dmp": {
             "uso": "corrector_relativo_no_valor_absoluto_de_forraje",
             "modelo_archivo": str(MODEL_PATH),
-            "modelo_sha256": sha256_file(MODEL_PATH),
-            "metricas_oof_del_artefacto": {key: rounded(value, 4) for key, value in predictor.metrics.items()},
-            "advertencias_carga_artefacto": predictor.load_warnings,
+            "modelo_sha256": sha256_file(MODEL_PATH) if predictor else None,
+            "metricas_oof_del_artefacto": {key: rounded(value, 4) for key, value in predictor.metrics.items()} if predictor else {},
+            "advertencias_carga_artefacto": predictor.load_warnings if predictor else [],
             "nota_metricas": "Las metricas OOF pertenecen al dataset del modelo y no validan este potrero ni el stock final.",
             "periodos": period_results,
         },
         "crecimiento": {
             "unidad": "kg MS/ha/dia",
             "porcentaje_utilizable_aplicado": utilization * 100.0,
-            "descripcion": "La referencia regional fija la magnitud; DMP actual/historico la adapta a la condicion del periodo.",
+            "descripcion": "Curva regional estacional; ajuste DMP solo en períodos con observaciones e historia suficientes.",
             "crecimiento_regional_normal_promedio_kg_ms_ha_dia": {
                 key: rounded(total_reference[key] / validated["days"], 3) for key in total_reference
             },
@@ -956,8 +1016,8 @@ def execute_calculation(
                 key: rounded(value * area_ha, 2) for key, value in total_usable.items()
             },
             "comparacion_con_referencia": {
-                "factor_efectivo_ventana": rounded(total_gross["central"] / total_reference["central"], 4),
-                "variacion_porcentual": rounded((total_gross["central"] / total_reference["central"] - 1.0) * 100.0, 2),
+                "factor_efectivo_ventana": rounded(total_gross["central"] / total_reference["central"], 4) if total_reference["central"] > 0 else None,
+                "variacion_porcentual": rounded((total_gross["central"] / total_reference["central"] - 1.0) * 100.0, 2) if total_reference["central"] > 0 and not fallback_periods else None,
                 "interpretacion": "Valor negativo indica crecimiento estimado por debajo de la referencia regional normal; positivo indica por encima."
             },
         },
@@ -1009,7 +1069,7 @@ def execute_calculation(
             "confianza_ambiental": environmental_confidence,
             "confianza_satelital": satellite_confidence,
             "confianza_historica": historical_confidence,
-            "aplicabilidad_modelo": "MEDIA" if not livestock_assumption and not regional_transfer and zone_key in {"corrientes", "entre_rios_norte", "buenos_aires_ne", "buenos_aires_centro"} else "BAJA",
+            "aplicabilidad_modelo": "MEDIA" if not fallback_periods and not livestock_assumption and not regional_transfer and zone_key in {"corrientes", "entre_rios_norte", "buenos_aires_ne", "buenos_aires_centro"} else "BAJA",
             "advertencias": warnings,
         },
         "limitaciones": [
