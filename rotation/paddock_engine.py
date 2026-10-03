@@ -45,8 +45,18 @@ def recommend(inputs):
         priority = evaluate_priority(dict(p, issues=issues)) if enabled and valid and remove > 0 else None
         status = ('FUERA_USO' if not enabled else 'EXCLUIDO' if not p.get('included') else 'SIN_DATOS' if not valid
                   else 'EXCESO' if remove else 'DISPONIBLE' if capacity > demand + 1e-9 else 'EQUILIBRADO')
+        # Preventive notice based on current load, independent of transfer allocation.
+        warning = None
+        if enabled and valid and animals > 0 and not remove and demand - growth > 1e-9:
+            deficit = demand - growth
+            days = max(0, stock) / deficit
+            if finite(days):
+                warning = dict(origin=p['id'], name=p['name'], reason='SALDO_DECRECIENTE',
+                    dailyDeficit=rounded(deficit), marginDays=rounded(days),
+                    priority=dict(level='MEDIA' if days <= 2 * HORIZON else 'BAJA',
+                        explanation='Margen estimado con el consumo y crecimiento actuales; hasta 14 días: media, más de 14: baja.'))
         p.update(enabled=enabled, issues=list(dict.fromkeys(issues)), capacity=capacity, average=average,
-                 remove=remove, priority=priority, excess=rounded(excess) if excess is not None else None,
+                 remove=remove, priority=priority, warning=warning, excess=rounded(excess) if excess is not None else None,
                  pressure=rounded(100 * demand / capacity) if valid and capacity > 0 else None, status=status,
                  projectedAnimals=animals, projectedDemand=demand, outgoing=0, incoming=0)
         paddocks.append(p)
@@ -91,6 +101,7 @@ def recommend(inputs):
         p['remainingExcess'] = rounded(max(0, (p['projectedDemand'] or 0) - p['capacity'])) if p['capacity'] is not None else None
     return dict(version=VERSION, priorityModel=MODEL, engineRuntime='python', horizon=HORIZON, paddocks=paddocks,
                 recommendations=recommendations,
+                warnings=sorted([p['warning'] for p in paddocks if p['warning']], key=lambda w: (w['marginDays'], w['origin'])),
                 partial=any((p.get('included') and p['status'] == 'SIN_DATOS') or
                             (not p['enabled'] and p['animals'] > 0 and not p['average']) for p in paddocks),
                 totals=dict(excessPaddocks=sum(p['enabled'] for p in sources), closedPaddocks=sum(not p['enabled'] for p in sources),

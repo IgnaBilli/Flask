@@ -55,4 +55,32 @@ class RecommendationTests(unittest.TestCase):
             scores=[evaluate_priority(p(1,days*100,100/(ratio/10)))['score'] for days in range(21)]
             self.assertEqual(scores,sorted(scores,reverse=True))
 
+    def test_preventive_margin_boundaries_and_rincon(self):
+        for stock, level in [(140.01,'BAJA'),(140,'MEDIA'),(70,'MEDIA')]:
+            data=recommend([p(1,stock,90)])
+            self.assertEqual(data['warnings'][0]['priority']['level'],level)
+            self.assertEqual(data['totals']['toMove'],0)
+            self.assertEqual(data['recommendations'],[])
+        data=recommend([p(1,69.99,90)])
+        self.assertEqual(data['warnings'],[])
+        self.assertEqual(data['totals']['toMove'],1)
+        r=dict(p(187,20225.1,1274.8,180),demand=1473.4)
+        warning=recommend([r])['warnings'][0]
+        self.assertEqual(warning['priority']['level'],'BAJA')
+        self.assertAlmostEqual(warning['marginDays'],101.84,places=2)
+
+    def test_preventive_notices_require_current_included_enabled_deficit(self):
+        for changes in [dict(included=False),dict(enabled=False),dict(issues=['Desactualizado']),
+                        dict(stock=None),dict(growth=100),dict(growth=110),dict(animals=0,demand=0)]:
+            self.assertEqual(recommend([dict(p(1,1000,90),**changes)])['warnings'],[])
+        self.assertEqual(recommend([p(1,1400,0)])['warnings'][0]['priority']['level'],'MEDIA')
+
+    def test_warnings_do_not_allocate_or_consume_destination_capacity(self):
+        data=recommend([p(1,1000,90),p(2,0,0)])
+        self.assertEqual([w['origin'] for w in data['warnings']],[1])
+        self.assertEqual(data['recommendations'][0]['origin'],2)
+        self.assertEqual(data['recommendations'][0]['destinations'][0]['id'],1)
+        self.assertEqual(data['totals']['toMove'],10)
+        self.assertEqual(sum(x['projectedAnimals'] for x in data['paddocks']),20)
+
 if __name__=='__main__':unittest.main()
