@@ -1,7 +1,7 @@
 """Traceable regional transfer when no direct vegetation rule is available.
 
 This is a selection heuristic, not a newly calibrated agronomic model. Only
-the NEA/BA provincial polygons enable new coverage. Existing direct rules and
+the NEA, Santa Fe, Entre Rios, La Pampa and BA provincial polygons enable coverage. Existing direct rules and
 regional curves remain authoritative and unchanged.
 """
 from __future__ import annotations
@@ -16,8 +16,8 @@ from shapely.geometry import shape
 from shapely.ops import unary_union
 
 
-BOUNDARIES = Path(__file__).parent / "data/gis/provincias_nea_ba.geojson"
-VERSION = "referencia_proxima_nea_ba_v1"
+BOUNDARIES = Path(__file__).parent / "data/gis/provincias_respaldo_stock.geojson"
+VERSION = "referencia_proxima_nea_litoral_pampa_ba_v2"
 GEOD = Geod(ellps="WGS84")
 # These associations mirror the existing IGN/Oyarzabal rules; they are not
 # claims of field validation across the entire vegetation unit or province.

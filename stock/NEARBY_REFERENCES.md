@@ -2,7 +2,8 @@
 
 El servicio `POST /predict/stock` conserva primero las reglas regionales
 directas de `gis_utils.py`. Cuando no hay regla directa, un potrero completamente
-dentro de Buenos Aires, Corrientes, Chaco, Formosa o Misiones puede obtener una
+dentro de Buenos Aires, Corrientes, Chaco, Formosa, Misiones, Santa Fe,
+Entre Ríos o La Pampa puede obtener una
 referencia transferida mediante `nearby_reference.py`. La cobertura se verifica
 con los polígonos provinciales GeoRef/IGN ya incluidos en el repositorio.
 Fuera de ese ámbito se conserva el comportamiento regional anterior.
@@ -43,7 +44,7 @@ que ambos campos tengan igual productividad.
 
 ## Respaldo del cálculo sin observaciones (v3)
 
-Para polígonos válidos completamente dentro de las cinco provincias, Stock
+Para polígonos válidos completamente dentro de las ocho provincias, Stock
 también puede calcularse si falta una escena, clima o historia DMP suficiente.
 Cada bloque conserva el ajuste DMP cuando hay observación e historia válidas.
 En los demás se usa la curva mensual regional sin anomalía (multiplicador 1).
@@ -59,7 +60,7 @@ normalmente, con piso cero. No se agregan biomasa inicial ni números arbitrario
 Cuando MapBiomas indica cobertura incompatible, se conserva esa clasificación
 y se estima el potencial regional bajo el uso ganadero asumido por el producto;
 no se aplica DMP de bosque/agua/urbano como si midiera pasto. Esto NO demuestra
-que haya forraje real allí. Fuera de NEA/BA se conserva el rechazo anterior.
+que haya forraje real allí. Fuera de estas ocho provincias se conserva el rechazo anterior.
 
 `respaldo_estimacion` registra cantidad de bloques regionales/ajustados y ámbito;
 cada período incluye `metodo_crecimiento` y `motivo_respaldo`. La aplicabilidad
@@ -81,3 +82,17 @@ límites provinciales, prioridades, distancias, curvas incompletas, reglas previ
 huecos de cartografía y balance completo con fuentes externas simuladas.
 Las pruebas reales y el respaldo anterior al despliegue se guardan fuera del
 repositorio en `deploy-terrabovina/respaldo-regional-20261002`.
+
+## Ampliación territorial (v4)
+
+Se agregan los polígonos completos de Santa Fe, Entre Ríos y La Pampa a
+`provincias_respaldo_stock.geojson`, extraídos de la descarga GeoRef oficial
+del 29/09/2026. La cobertura del módulo climático experimental queda separada
+en su archivo anterior: esta ampliación no le atribuye nuevas fuentes.
+El respaldo de Stock requiere que todo el polígono esté dentro de la unión
+provincial y admite potreros que crucen límites internos del ámbito.
+No se relajan las fronteras internacionales ni se agrega un número constante.
+En el oeste pampeano puede transferirse Caldenal a Monte sin coincidencia
+ambiental; es una aproximación de baja confianza, no una validación del Monte.
+El caso Espinal/U20 de Santa Fe obtiene una referencia próxima compatible
+por ecorregión; no una curva específica medida en ese potrero.

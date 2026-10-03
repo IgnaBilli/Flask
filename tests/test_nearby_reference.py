@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "modelo_final DMP/src"))
-from shapely.geometry import box, mapping
+from shapely.geometry import box, mapping, Polygon
 from stock.gis_utils import resolve_gis_context
 from stock.nearby_reference import fallback_scope, nearest_reference
 from stock.calculator import calculate_stock
@@ -24,13 +24,26 @@ class NearbySelectionTest(unittest.TestCase):
     def test_all_target_provinces_allow_fallback(self):
         for province, lon, lat in [("Buenos Aires", -62.8, -40.5), ("Corrientes", -57.8, -28.7),
                                    ("Chaco", -60.5, -26.5), ("Formosa", -61.8, -24),
-                                   ("Misiones", -54.6, -26.4)]:
+                                   ("Misiones", -54.6, -26.4), ("Santa Fe", -61.20436, -31.68509),
+                                   ("Entre Ríos", -59.0, -32.5), ("La Pampa", -67.5, -37.5)]:
             with self.subTest(province=province):
                 self.assertIn(province, fallback_scope(field(lon, lat)))
 
     def test_whole_polygon_required_and_no_extension_to_patagonia_or_brazil(self):
-        for polygon in [field(-65.5, -43.3), field(-53.5, -26.4), box(-65, -42, -58, -35)]:
+        for polygon in [field(-65.5, -43.3), field(-53.5, -26.4), field(-57.6, -25.3),
+                        box(-65, -42, -58, -35), box(-68.4, -37.51, -68.2, -37.5)]:
             self.assertIsNone(fallback_scope(polygon))
+
+    def test_internal_province_boundary_and_irregular_geometry(self):
+        self.assertEqual(fallback_scope(box(-61.01, -28.01, -60.99, -27.99)),
+                         ["Chaco", "Santa Fe"])
+        polygon = Polygon([(-61.214018,-31.675188),(-61.192174,-31.679461),
+                           (-61.196766,-31.696223),(-61.209126,-31.694141),
+                           (-61.207881,-31.689285),(-61.217494,-31.687203)])
+        self.assertEqual(fallback_scope(polygon), ["Santa Fe"])
+        selection = resolve_gis_context(polygon, PARAMS)["seleccion_referencia"]
+        self.assertEqual(selection["estado"], "RESPALDO_PROXIMIDAD")
+        self.assertFalse(selection["respaldo"]["validacion_local"])
 
     def test_closest_wins_without_environment_match(self):
         result = nearest_reference(field(-54.6, -26.4), "selva paranaense", "U1", PARAMS, ["Misiones"])
@@ -78,7 +91,8 @@ class NearbySelectionTest(unittest.TestCase):
                 self.assertNotIn("respaldo", result)
 
     def test_unmapped_real_locations_get_a_complete_regional_reference(self):
-        for lon, lat in [(-54.6, -26.4), (-61.8, -24), (-62.8, -40.5), (-62.3, -38.7)]:
+        for lon, lat in [(-54.6, -26.4), (-61.8, -24), (-62.8, -40.5), (-62.3, -38.7),
+                         (-61.20436, -31.68509), (-67.5, -37.5)]:
             with self.subTest(lon=lon, lat=lat):
                 result = resolve_gis_context(field(lon, lat), PARAMS)["seleccion_referencia"]
                 self.assertEqual(result["estado"], "RESPALDO_PROXIMIDAD")

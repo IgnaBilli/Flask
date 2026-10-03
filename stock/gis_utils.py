@@ -226,7 +226,7 @@ def resolve_gis_context(polygon: Polygon, params: dict[str, Any]) -> dict[str, A
                       transferred["estado"], transferred["justificacion"])
         else:
             if not ecoregions or not vegetation_units:
-                raise ValueError("El polígono no intersecta las capas ambientales y está fuera del respaldo NEA/Buenos Aires.")
+                raise ValueError("El polígono no intersecta las capas ambientales y está fuera del respaldo NEA/Santa Fe/Entre Ríos/La Pampa/Buenos Aires.")
             zone_key, curves = _bbox_fallback(polygon, params)
             direct = (zone_key, curves, "RESPALDO_BBOX",
                       f"No existe mapeo exacto para {dominant_eco} + {dominant_unit}; se usó el límite operativo regional solo como respaldo.")

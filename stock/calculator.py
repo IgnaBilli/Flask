@@ -954,7 +954,7 @@ def execute_calculation(
         "generado_en": datetime.now().astimezone().isoformat(timespec="seconds"),
         "metodologia": "gis_dmp_balance_estacional_respaldo_regional_v3",
         "respaldo_estimacion": {
-            "activo": bool(fallback_periods), "version": "nea_ba_regional_sin_observacion_v1",
+            "activo": bool(fallback_periods), "version": "nea_litoral_pampa_ba_regional_sin_observacion_v2",
             "provincias": regional_scope or [], "periodos_regionales": len(fallback_periods),
             "periodos_ajustados_dmp": len(period_results) - len(fallback_periods),
             "medicion_real": False, "validacion_local": False,
