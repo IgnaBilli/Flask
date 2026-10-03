@@ -682,7 +682,9 @@ def confidence_historical(year_count: int) -> str:
 def execute_calculation(
     input_data: dict[str, Any] | Path,
     output_path: Path | None = None,
+    on_progress=None,
 ) -> dict[str, Any]:
+    progress = on_progress or (lambda value: None)
     params = load_json(PARAMS_PATH)
     data = input_data if isinstance(input_data, dict) else load_json(input_data)
     validated = validate_input(data, params)
@@ -695,6 +697,7 @@ def execute_calculation(
     lon, lat = representative.x, representative.y
     warnings: list[str] = []
     regional_scope = fallback_scope(polygon)
+    progress(3)
     # This is a per-request soft budget. An in-flight bounded request may finish
     # after it, but no further remote observation is started after the deadline.
     if regional_scope:
@@ -706,6 +709,7 @@ def execute_calculation(
     except Exception as exc:
         raise StockError(f"No se pudo resolver el contexto GIS: {exc}") from exc
     selection = gis_context["seleccion_referencia"]
+    progress(10)
     zone_key = selection["zona_id"]
     zone = params["zonas"][zone_key]
     curve_keys = list(selection["perfiles_utilizados"])
@@ -722,6 +726,7 @@ def execute_calculation(
             raise
         mapbiomas = {"estado": "NO_DISPONIBLE", "clase_predominante": None, "errores": [str(exc)]}
     map_coverage = mapbiomas.get("clase_predominante")
+    progress(20)
     compatible = set(params["coberturas_forrajeras_compatibles"])
     livestock_assumption = None
     regional_only_reason = None
@@ -784,6 +789,11 @@ def execute_calculation(
     total_reference = {"min": 0.0, "central": 0.0, "max": 0.0}
     utilization = float(params["parametros"]["porcentaje_utilizable_pastizal_natural"])
     clipped_any = False
+    progress(25)
+    units = len(historical_years) + 2
+    completed_periods = 0
+    def observation_progress(done):
+        progress(25 + 65 * (completed_periods * units + done) / (len(segments) * units))
 
     # Spend the optional observation budget on the most recent growth first.
     for period_index, (period_start, period_end) in reversed(list(enumerate(segments, 1))):
@@ -803,7 +813,8 @@ def execute_calculation(
                 if not regional_scope:
                     raise
                 fallback_reason = str(exc)
-        for year in historical_years if not fallback_reason else []:
+        observation_progress(1)
+        for history_index, year in enumerate(historical_years if not fallback_reason else []):
             historical_target = equivalent_date(year, period_end)
             try:
                 check_observation_budget(params)
@@ -817,6 +828,7 @@ def execute_calculation(
             except Exception as exc:
                 history_errors.append({"anio": str(year), "error": str(exc)})
                 print(f"  Histórico {year}: no disponible")
+            observation_progress(history_index + 2)
         historical_median = statistics.median(item["dmp_kg_ms_ha_dia"] for item in history) if history else None
         if not fallback_reason and (len(history) < minimum_years or historical_median <= 0):
             fallback_reason = f"Histórico DMP insuficiente o no positivo: {len(history)} años válidos; mínimo {minimum_years}."
@@ -891,7 +903,11 @@ def execute_calculation(
             "referencias_diarias": daily_references,
         })
 
+        completed_periods += 1
+        observation_progress(0)
+
     period_results.sort(key=lambda period: period["periodo"])
+    progress(95)
     # El campo histórico 'stock inicial' ahora representa producción antes del consumo.
     initial = dict(total_usable)
     initial_metadata = {
@@ -1128,4 +1144,14 @@ def print_summary(output: dict[str, Any], output_path: Path) -> None:
 
 def calculate_stock(data: dict[str, Any]) -> dict[str, Any]:
     """Entrada estable del servicio: calcula Stock sin archivos intermedios."""
-    return execute_calculation(data)
+    if 'progress_id' not in data:
+        return execute_calculation(data)
+    from stock.progress import reporter
+    try:
+        progress = reporter(data['progress_id'])
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise StockInputError('progress_id debe ser un UUID válido.') from exc
+    progress(0)
+    result = execute_calculation(data, on_progress=progress)
+    progress(100)
+    return result

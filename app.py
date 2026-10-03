@@ -421,6 +421,15 @@ def predict_stock():
         return jsonify({"estado": "ERROR", "error": str(exc)}), 500
 
 
+@app.get('/predict/stock/progress/<identifier>')
+def stock_progress(identifier):
+    from stock.progress import read_progress
+    value = read_progress(identifier)
+    response = jsonify(value or {'porcentaje': 0})
+    response.headers['Cache-Control'] = 'no-store'
+    return response, 200 if value is not None else 404
+
+
 @app.route('/intrapotrero/analizar', methods=['POST'])
 def analyze_intrapaddock():
     from intrapaddock import analyze, ZoneError
