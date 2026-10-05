@@ -495,7 +495,7 @@ def find_valid_scene(polygon: Polygon, geojson: dict[str, Any], target_date: dat
     raise StockError(f"Ninguna escena fue válida para {target_date}. Detalle: {' | '.join(errors[:3])}")
 
 
-def fetch_weather(lat: float, lon: float, target_date: date) -> dict[str, float]:
+def fetch_weather(lat: float, lon: float, target_date: date) -> dict[str, Any]:
     start_date = target_date - timedelta(days=65)
     daily_variables = [
         "temperature_2m_mean",
@@ -528,6 +528,7 @@ def fetch_weather(lat: float, lon: float, target_date: date) -> dict[str, float]
 
     s7, s14, s30, s60 = (recent(days) for days in (7, 14, 30, 60))
     return {
+        "fecha_dato": str(row["time"]),
         "temperatura_media_del_dia": float(row["temperature_2m_mean"]),
         "temperatura_minima_del_dia": float(row["temperature_2m_min"]),
         "temperatura_maxima_del_dia": float(row["temperature_2m_max"]),
@@ -634,7 +635,12 @@ def calculate_dmp_observation(
     scene = find_valid_scene(polygon, geojson, target_date, params)
     check_observation_budget(params)
     weather = fetch_weather(lat, lon, date.fromisoformat(scene["scene_date"]))
+    climate_date = weather.pop("fecha_dato", None)
     prediction = predictor.predict(lat, lon, scene, weather, soil_use, coverage)
+    def climate_value(key: str) -> float | None:
+        value = weather.get(key)
+        return round(float(value), 2) if value is not None and math.isfinite(float(value)) else None
+
     return {
         "fecha_objetivo": target_date.isoformat(),
         "dmp_kg_ms_ha_dia": rounded(prediction, 3),
@@ -651,7 +657,14 @@ def calculate_dmp_observation(
             "ndvi_max": rounded(scene["ndvi_max"], 4),
             "ndvi_std": rounded(scene["ndvi_std"], 4),
         },
-        "clima_fecha": scene["scene_date"],
+        "clima_fecha": climate_date,
+        "clima": {
+            "fuente": "OPEN_METEO_ARCHIVE",
+            "fecha": climate_date,
+            "temperatura": climate_value("temperatura_media_del_dia"),
+            "precipitacion": climate_value("precipitacion_del_dia"),
+            "humedad": climate_value("humedad_relativa_del_dia"),
+        },
     }
 
 
