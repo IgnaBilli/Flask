@@ -8,8 +8,24 @@ def paddock_recommendations():
     try:
         data = request.get_json()
         validate(data)
+        if 'groups' in data:
+            from .group_engine import recommend as group_recommend, validate_groups
+            validate_groups(data)
+            return jsonify(group_recommend(data['paddocks'], data['groups']))
         return jsonify(recommend(data['paddocks']))
     except (ValueError, TypeError) as error:
+        return jsonify(error=str(error)), 422
+
+@rotation_api.post('/rotation/validate-transfer')
+def validate_group_transfer():
+    from .paddock_engine import validate
+    from .group_engine import validate_groups, validate_transfer
+    try:
+        data = request.get_json()
+        validate(data)
+        validate_groups(data)
+        return jsonify(validate_transfer(data))
+    except (ValueError, TypeError, KeyError) as error:
         return jsonify(error=str(error)), 422
 
 @rotation_api.post('/rotation/plan')
