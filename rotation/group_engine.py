@@ -4,7 +4,11 @@ import math
 from .fuzzy_priority import finite, rounded
 from .paddock_engine import recommend as aggregate_recommend, HORIZON
 
-VERSION = 'rotacion_grupos_v1'
+VERSION = 'rotacion_grupos_v2'
+# Saved stock already includes today's resident consumption. A transfer recorded
+# for today adds arrival-day consumption before the seven future forecast days.
+# Reserve a full arrival day conservatively; do not pretend this pasture is free.
+ARRIVAL_RESERVE_DAYS = 1
 CATEGORIES = {'TERNERO', 'VAQUILLONA', 'NOVILLO', 'VACA', 'TORO'}
 
 
@@ -77,7 +81,8 @@ def recommend(inputs, groups):
     for g in copy.deepcopy(groups):
         residents[g['origin']].append(g)
     for p in ps:
-        p.update(projectedDemand=p['demand'], projectedAnimals=p['animals'], incoming=0, outgoing=0)
+        p.update(projectedDemand=p['demand'], projectedAnimals=p['animals'], incoming=0, outgoing=0,
+                 arrivalReserve=0)
     sources = {r['origin']: r for r in result['recommendations']}
     candidates = [g for g in groups if g['origin'] in sources]
     levels = {'ALTA': 0, 'MEDIA': 1, 'BAJA': 2}
@@ -114,7 +119,7 @@ def recommend(inputs, groups):
                 reason = compatible(g, d, residents[d['id']], unit)
                 if reason:
                     blocked.add(reason)
-                elif d['capacity'] - d['projectedDemand'] + 1e-7 < demand:
+                elif d['capacity'] - d['projectedDemand'] - d['arrivalReserve']/HORIZON + 1e-7 < demand*(1+ARRIVAL_RESERVE_DAYS/HORIZON):
                     blocked.add('No hay capacidad suficiente para recibir el grupo sin dividirlo.' if not g['allowSplit'] else 'No queda capacidad suficiente en los destinos.')
                 else:
                     options.append(d)
@@ -122,6 +127,7 @@ def recommend(inputs, groups):
                 continue
             dest = min(options, key=lambda d: ((d['projectedDemand'] + demand) / d['capacity'], d['id']))
             dest['projectedDemand'] += demand
+            dest['arrivalReserve'] += demand*ARRIVAL_RESERVE_DAYS
             dest['projectedAnimals'] += len(unit)
             dest['incoming'] += len(unit)
             source['projectedDemand'] -= demand
@@ -183,7 +189,7 @@ def recommend(inputs, groups):
         p['projectedBalance'] = rounded(max(0,p['stock'])+HORIZON*(p['growth']-p['projectedDemand'])) if p['enabled'] and p['capacity'] is not None else None
         p['remainingExcess'] = rounded(max(0,(p['projectedDemand'] or 0)-p['capacity'])) if p['capacity'] is not None else None
         p['projectedPressure'] = rounded(100*p['projectedDemand']/p['capacity']) if p['capacity'] else None
-    result.update(recommendations=recommendations, groups=groups,
+    result.update(recommendations=recommendations, groups=groups, arrivalReserveDays=ARRIVAL_RESERVE_DAYS,
         partial=result['partial'] or any(g.get('issues') for g in groups))
     result['totals'].update(toMove=sum(r['remove'] for r in recommendations), allocated=sum(r['allocated'] for r in recommendations), pending=sum(r['unallocated'] for r in recommendations))
     return result
@@ -217,6 +223,6 @@ def validate_transfer(payload):
             raise ValueError('Los datos cambiaron o están pendientes. Actualizá Rotación antes de confirmar.')
         if any(not finite(a.get('demand')) for a in selected):
             raise ValueError('Actualizá el consumo antes de confirmar.')
-        if dest['capacity'] is None or dest['demand']+sum(a['demand'] for a in selected) > dest['capacity']+1e-7:
+        if dest['capacity'] is None or dest['demand']+sum(a['demand'] for a in selected)*(1+ARRIVAL_RESERVE_DAYS/HORIZON) > dest['capacity']+1e-7:
             raise ValueError('El destino ya no tiene capacidad para este traslado. Actualizá Rotación.')
     return dict(valid=True)

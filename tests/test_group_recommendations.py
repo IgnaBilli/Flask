@@ -27,7 +27,7 @@ class GroupTests(unittest.TestCase):
 
     def test_whole_group_cannot_be_split_by_available_capacity(self):
         gs=[group(1,1,[animal(1),animal(2)])]
-        ps=[paddock(1,2,20),paddock(2,capacity=10),paddock(3,capacity=10)]
+        ps=[paddock(1,2,20),paddock(2,capacity=12),paddock(3,capacity=12)]
         r=self.call(ps,gs)
         self.assertEqual(r['totals']['allocated'],0)
         gs[0]['allowSplit']=True
@@ -58,7 +58,7 @@ class GroupTests(unittest.TestCase):
 
     def test_body_condition_changes_competition_inside_same_urgency(self):
         gs=[group(1,1,[animal(1,condition=4)]),group(2,2,[animal(2,condition=2)])]
-        ps=[paddock(1,1,10),paddock(2,1,10),paddock(3,capacity=10)]
+        ps=[paddock(1,1,10),paddock(2,1,10),paddock(3,capacity=12)]
         r=self.call(ps,gs)
         self.assertEqual(r['recommendations'][0]['origin'],2)
         self.assertEqual(r['recommendations'][0]['allocated'],1)
@@ -75,7 +75,7 @@ class GroupTests(unittest.TestCase):
 
     def test_group_demand_is_not_paddock_average(self):
         gs=[group(1,1,[animal(1,demand=20,condition=2)]),group(2,1,[animal(2,demand=5)])]
-        ps=[paddock(1,2,25,capacity=20),paddock(2,capacity=5)]
+        ps=[paddock(1,2,25,capacity=20),paddock(2,capacity=6)]
         r=self.call(ps,gs)
         self.assertEqual(len(r['recommendations']),1)
         self.assertEqual(r['recommendations'][0]['destinations'][0]['animalIds'],[2])
@@ -88,7 +88,7 @@ class GroupTests(unittest.TestCase):
 
     def test_split_group_tries_a_lighter_member_when_first_cannot_fit(self):
         gs=[group(1,1,[animal(1,demand=20,condition=2),animal(2,demand=5)],allowSplit=True)]
-        r=self.call([paddock(1,2,25,capacity=20),paddock(2,capacity=5)],gs)
+        r=self.call([paddock(1,2,25,capacity=20),paddock(2,capacity=6)],gs)
         self.assertEqual(r['recommendations'][0]['destinations'][0]['animalIds'],[2])
         self.assertEqual(r['totals']['pending'],0)
 
@@ -127,6 +127,32 @@ class GroupTests(unittest.TestCase):
             moved=[i for rec in r['recommendations'] for d in rec['destinations'] for i in d['animalIds']]
             self.assertEqual(len(moved),len(set(moved)))
             for p in r['paddocks'][1:]:self.assertLessEqual(p['projectedDemand'],p['capacity']+.01)
+            for p in r['paddocks'][1:]:
+                after_arrival_capacity=max(0,p['stock']-p['arrivalReserve'])/7+p['growth']
+                self.assertLessEqual(p['projectedDemand'],after_arrival_capacity+.01)
             self.assertEqual(r['totals']['toMove'],r['totals']['allocated']+r['totals']['pending'])
+
+    def test_arrival_day_consumption_cannot_overfill_destination_after_refresh(self):
+        # Production reproduction: 40 incoming novillos fit a seven-day budget,
+        # but no longer fit once the same-day transfer is charged to its stock.
+        gs=[group(1,1,[animal(i+1,demand=8.53) for i in range(1001)],allowSplit=True),
+            group(2,2,[animal(2000+i,'TERNERO',3.69) for i in range(3)],allowSplit=True)]
+        ps=[paddock(1,1001,8538.53),paddock(2,3,11.07,stock=1996.7,growth=73.2)]
+        r=self.call(ps,gs)
+        dest=r['recommendations'][0]['destinations'][0]
+        self.assertEqual(dest['quantity'],35)
+        moved=set(dest['animalIds'])
+        after_ps=copy.deepcopy(ps);after_gs=copy.deepcopy(gs)
+        incoming=[a for a in after_gs[0]['animals'] if a['id'] in moved]
+        after_gs[0]['animals']=[a for a in after_gs[0]['animals'] if a['id'] not in moved]
+        after_gs.append(group(3,2,incoming,allowSplit=True))
+        after_ps[0].update(animals=966,demand=966*8.53)
+        after_ps[1].update(animals=38,demand=11.07+35*8.53,stock=1996.7-35*8.53)
+        updated=self.call(after_ps,after_gs)
+        self.assertNotEqual(updated['paddocks'][1]['status'],'EXCESO')
+        body=dict(paddocks=ps,groups=gs,transfer=dict(origin=1,destination=2,animalIds=list(moved),recommendation=True))
+        self.assertTrue(validate_transfer(body)['valid'])
+        body['transfer']['animalIds']=list(range(1,41))
+        with self.assertRaisesRegex(ValueError,'capacidad'):validate_transfer(body)
 
 if __name__=='__main__':unittest.main()
