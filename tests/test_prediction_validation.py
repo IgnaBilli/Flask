@@ -12,6 +12,13 @@ class PredictionValidationTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
 
+    def test_nonpositive_model_result_is_not_a_successful_consumption(self):
+        payload={'animales':[{'animal_id':'tiny-cow','categoria_terrabovina':'Vaca','peso_vivo_kg':0.01,'condicion_corporal':1,'estado_fisiologico_norm':'N'}]}
+        response=self.client.post('/predict/dmi',json=payload)
+        self.assertEqual(response.status_code,422,response.json)
+        self.assertEqual(response.json['estado'],'NO_CALCULABLE')
+        self.assertEqual(response.json['animales_invalidos'],['tiny-cow'])
+
     def test_dmi_rejects_invalid_inputs_before_inference(self):
         valid = {"animal_id": "test", "peso_vivo_kg": 400, "categoria_terrabovina": "Novillo"}
         cases = [[], "bad", {"animales": []}, {"animales": [None]},

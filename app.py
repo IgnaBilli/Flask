@@ -375,6 +375,11 @@ def predict_dmi():
 
     try:
         predicciones, advertencias = dmi_predictor.predict(animales)
+        invalidos = [p['animal_id'] for p in predicciones
+                     if not math.isfinite(p['dmi_kg_dia']) or p['dmi_kg_dia'] <= 0]
+        if invalidos:
+            return jsonify(error='El modelo no obtuvo un consumo positivo para algunos animales. Revisá sus pesos y atributos.',
+                           estado='NO_CALCULABLE', animales_invalidos=invalidos, advertencias=advertencias), 422
         return jsonify({
             "predicciones": predicciones,
             "advertencias": advertencias
