@@ -5,6 +5,9 @@ import math
 import json
 from datetime import datetime, timedelta
 import urllib.request
+import urllib.error
+from functools import lru_cache
+from urllib.parse import urlencode
 import pandas as pd
 import numpy as np
 import joblib
@@ -63,38 +66,60 @@ cat_cols_dmp = artifacts_dmp.get('cat_cols', ['tipo_uso_suelo', 'clase_cobertura
 dmi_predictor = HerdPredictor()
 
 # --- FUNCIONES AUXILIARES DMP ---
+MAPBIOMAS_BASE = 'https://prd.plataforma.mapbiomas.org/api/v1/argentina'
+
+
+def read_mapbiomas(path):
+    req = urllib.request.Request(MAPBIOMAS_BASE + path, headers={
+        'User-Agent': 'TerraBovina', 'tenant-id': 'mapbiomas',
+    })
+    with urllib.request.urlopen(req, timeout=10) as response:
+        return json.load(response)
+
+
+@lru_cache(maxsize=1)
+def public_coverage_layer():
+    themes = read_mapbiomas('/themes?page=1&pageSize=1000&expand=true')['themes']
+    layers = [layer for theme in themes if theme.get('name', {}).get('en-US') == 'Coverage'
+              for layer in theme.get('subthemes', []) if layer.get('name', {}).get('en-US') == 'Coverage']
+    if len(layers) != 1 or len(layers[0].get('legends', [])) != 1:
+        raise StockError('No se pudo identificar la capa y la leyenda pública de cobertura de Argentina.')
+    return layers[0]['key'], layers[0]['legends'][0]['key']
+
+
 def fetch_mapbiomas_class(lat: float, lon: float, year: int) -> str:
     try:
-        url = 'https://prd.plataforma.mapbiomas.org/api/v1/argentina/maps/pixel-history'
         pixel_values = [27, 15, 9, 21, 19, 36, 3, 4, 6, 34, 33, 77, 63, 12, 11, 66, 73, 24, 25]
-        params_str = f"latitude={lat}&longitude={lon}&subthemeKey=coverage_lclu&legendKey=default"
-        for pv in pixel_values:
-            params_str += f"&pixelValue={pv}"
-            
-        full_url = f"{url}?{params_str}"
-        req = urllib.request.Request(full_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            hist = data.get('history', [])
-            
-            mapping = {
-                1: 'Bosques', 3: 'Bosques cerrados', 4: 'Bosques abiertos', 6: 'Bosques inundables',
-                10: 'Vegetación natural herbácea y arbustiva', 66: 'Arbustales cerrados', 77: 'Arbustales abiertos',
-                63: 'Mosaicos de arbustos y herbáceas', 12: 'Herbáceas', 11: 'Herbaceas Inundables', 73: 'Turberas',
-                14: 'Áreas de uso agropecuario', 18: 'Agricultura', 19: 'Cultivos temporarios', 36: 'Cultivos perennes',
-                15: 'Pasturas', 9: 'Silvicultura', 21: 'Mosaico de usos', 22: 'Área sin vegetación', 24: 'Áreas urbanas',
-                25: 'Otras áreas no vegetadas', 26: 'Cuerpos de agua', 34: 'Hielo en superficie y nieve permanente',
-                33: 'Ríos, lagunas, lagos y océano', 27: 'No observado'
-            }
-            
-            year_map = {item['year']: item['pixelValue'] for item in hist}
-            pixel_val = year_map.get(year)
-            if pixel_val is None and year_map:
-                pixel_val = year_map[max(year_map.keys())]
-                
-            if pixel_val not in mapping or pixel_val == 27:
-                raise StockError('MapBiomas no devolvió una cobertura utilizable.')
-            return mapping[pixel_val]
+        for attempt in range(2):
+            layer, legend = public_coverage_layer()
+            params = urlencode({'latitude': lat, 'longitude': lon, 'subthemeKey': layer,
+                                'legendKey': legend, 'pixelValue': pixel_values}, doseq=True)
+            try:
+                hist = read_mapbiomas('/maps/pixel-history?' + params).get('history', [])
+                break
+            except urllib.error.HTTPError as error:
+                if error.code != 404 or attempt:
+                    raise
+                public_coverage_layer.cache_clear()
+
+        mapping = {
+            1: 'Bosques', 3: 'Bosques cerrados', 4: 'Bosques abiertos', 6: 'Bosques inundables',
+            10: 'Vegetación natural herbácea y arbustiva', 66: 'Arbustales cerrados', 77: 'Arbustales abiertos',
+            63: 'Mosaicos de arbustos y herbáceas', 12: 'Herbáceas', 11: 'Herbaceas Inundables', 73: 'Turberas',
+            14: 'Áreas de uso agropecuario', 18: 'Agricultura', 19: 'Cultivos temporarios', 36: 'Cultivos perennes',
+            15: 'Pasturas', 9: 'Silvicultura', 21: 'Mosaico de usos', 22: 'Área sin vegetación', 24: 'Áreas urbanas',
+            25: 'Otras áreas no vegetadas', 26: 'Cuerpos de agua', 34: 'Hielo en superficie y nieve permanente',
+            33: 'Ríos, lagunas, lagos y océano', 27: 'No observado'
+        }
+
+        year_map = {item['year']: item['pixelValue'] for item in hist}
+        pixel_val = year_map.get(year)
+        if pixel_val is None and year_map:
+            pixel_val = year_map[max(year_map.keys())]
+
+        if pixel_val not in mapping or pixel_val == 27:
+            raise StockError('MapBiomas no devolvió una cobertura utilizable.')
+        return mapping[pixel_val]
     except Exception as exc:
         raise StockError('No se pudo consultar la cobertura de MapBiomas.') from exc
 
