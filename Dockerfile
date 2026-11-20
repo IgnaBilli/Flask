@@ -1,5 +1,7 @@
 # 1. Usar imagen base ligera de Python 3.11
 FROM public.ecr.aws/docker/library/python:3.11-slim
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
+ENV AWS_LWA_PORT=5000 AWS_LWA_READINESS_CHECK_PATH=/health MPLCONFIGDIR=/tmp/matplotlib
 
 # 2. Evitar generación de bytecode y forzar stdout sin búfer
 ENV PYTHONUNBUFFERED=1 \
